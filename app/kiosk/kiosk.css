@@ -192,3 +192,9 @@
   .menu-card { min-height: 0; }
   .topbar-meta { gap: 8px; font-size: 13px; }
 }
+
+/* 메뉴 사진: 카드 위쪽에 가로로 넓게(사진은 세로형이라 가운데를 잘라 보여 준다) */
+.menu-photo { display: block; width: calc(100% + 32px); height: 150px; margin: -16px -16px 8px; border-radius: var(--radius) var(--radius) 0 0; object-fit: cover; object-position: center 45%; background: var(--soft); }
+.menu-card:disabled .menu-photo { filter: grayscale(.8); opacity: .6; }
+.dialog-photo { display: block; width: calc(100% + 48px); height: 200px; margin: -24px -24px 16px; object-fit: cover; object-position: center 45%; background: var(--soft); }
+@media (max-width: 720px) { .menu-photo { height: 120px; } .dialog-photo { height: 160px; } }
