@@ -160,13 +160,16 @@ export function parsePickResult(value: unknown): AiPickResult | undefined {
 
 // ---- 위 4칸 묶기(/ai/group-orders): 주문이 바뀔 때마다 맨 앞 4건 중 비슷한 주문끼리 한 묶음 ----
 // aiserver app/schemas.py GroupRequest/GroupResult와 맞춘다.
+// anchor(1번 기준): FIFO 보드는 1번(먼저 만들 주문)과 비슷한 2~4번만 묻는다. 응답 groups는 anchor와 그 짝만 1번 묶음이고,
+// scores는 anchor가 아닌 주문마다 anchor와 비슷한 정도(Zoro noul, 같은 메뉴면 1)다.
 export type AiGroupMenu = { id: string; name: string; equipment: string[]; steps: string[] };
-export type AiGroupRequest = { orders: { id: string; menus: AiGroupMenu[] }[] };
-export type AiGroupResult = { groups: Record<string, number>; fallback: boolean };
+export type AiGroupRequest = { orders: { id: string; menus: AiGroupMenu[] }[]; anchor?: string };
+export type AiGroupResult = { groups: Record<string, number>; scores: Record<string, number>; fallback: boolean };
 
 export function parseGroupResult(value: unknown): AiGroupResult | undefined {
   if (!isRecord(value)) return undefined;
-  const { groups = {}, fallback = false } = value;
+  const { groups = {}, scores = {}, fallback = false } = value;
   if (!isRecord(groups) || !Object.values(groups).every((n) => Number.isInteger(n)) || typeof fallback !== 'boolean') return undefined;
-  return { groups: groups as Record<string, number>, fallback };
+  if (!isRecord(scores) || !Object.values(scores).every((n) => typeof n === 'number' && n >= 0 && n <= 1)) return undefined;
+  return { groups: groups as Record<string, number>, scores: scores as Record<string, number>, fallback };
 }

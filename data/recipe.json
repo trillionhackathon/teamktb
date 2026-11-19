@@ -2082,6 +2082,62 @@
       "quality_note": null
     },
     {
+      "id": "tiramisu",
+      "name_kr": "티라미수",
+      "name_en": "Tiramisu",
+      "category": "dessert",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "ICE",
+      "price_krw": 6800,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "refrigerator"
+      ],
+      "allergens": [
+        "milk",
+        "wheat",
+        "egg"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [],
+      "ingredients": [
+        {
+          "item": "티라미수 1조각",
+          "amount": ""
+        },
+        {
+          "item": "접시 또는 포장 상자",
+          "amount": ""
+        },
+        {
+          "item": "포크",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "냉장 쇼케이스에서 꺼낸다",
+        "접시(포장은 상자)에 담고 포크를 함께 전달"
+      ],
+      "step_seconds": [
+        {
+          "text": "냉장 쇼케이스에서 꺼낸다",
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "text": "접시(포장은 상자)에 담고 포크를 함께 전달",
+          "sec": 10,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {},
+      "quality_note": "가열 불필요. 실온 방치 시 크림이 무른다",
+      "delivery_suitable": false
+    },
+    {
       "id": "chamomile_hot",
       "name_kr": "캐모마일 티(핫)",
       "name_en": "Chamomile Tea (Hot)",
@@ -3101,30 +3157,6 @@
       "quality_note": "가열 시간이 가장 길다. 음료와 동시 주문 시 파니니를 먼저 시작",
       "unattended_window_sec": 180,
       "note": "그릴이 자동으로 눌러주므로 180초 동안 바리스타는 자유롭다 — 음료 제조와 병렬 가능"
-    },
-    {
-      "id": "tiramisu",
-      "name_kr": "티라미수",
-      "name_en": "Tiramisu",
-      "category": "dessert",
-      "price_krw": 6800,
-      "complexity_tier": 1,
-      "equipment_required": [
-        "refrigerator"
-      ],
-      "allergens": [
-        "milk",
-        "wheat",
-        "egg"
-      ],
-      "heat_sec": 0,
-      "steps": [
-        "냉장 쇼케이스에서 꺼낸다",
-        "접시에 담고 포크를 함께 전달"
-      ],
-      "consumes_stock": {},
-      "quality_note": "가열 불필요. 실온 방치 시 크림이 무른다",
-      "delivery_suitable": false
     },
     {
       "id": "choco_chunk_cookie",

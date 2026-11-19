@@ -50,7 +50,9 @@
     "reorderable_row": "bottom (slots 5-8) — 들어온 순서로 대기. 1번 완료 때 이 중 하나를 골라 4번에 넣는다(Zoro priority_order, Zoro가 답하지 못하면 룰)",
     "locked_count": 4,
     "fifo": true,
-    "overflow": "9번째 주문부터 화면 밖 대기열",
+    "quick_lane": true,
+    "quick_lane_rule": "8번 칸은 빠른 주문 전용. 1~7번은 들어온 순서(FIFO)이고, 8번에는 1~4번 밖(5~7번과 화면 밖 대기열 포함)에서 가장 먼저 들어온 매장·포장 디저트 전용 주문(아이스크림, 티라미수 등)을 띄운다. 1번(같이 만드는 주문 포함) 레시피에 손이 비는 단계(attended=false, 예: 샷 추출 30초)가 있고 그 시간이 디저트 손 시간(attended 합) 이상이면 '지금 먼저 내보내기'로 알린다. 코드 규칙이며 Zoro에 묻지 않는다.",
+    "overflow": "8번째 주문부터 화면 밖 대기열(quick_lane이면 FIFO는 7칸)",
     "card_fields": [
       "order_id",
       "menu_items",

@@ -8,7 +8,7 @@ import { attachInventory } from '../app/server/inventory-instance.ts';
 import { OrderStore } from '../app/server/order-store.ts';
 import { boardConfig, menuCatalog } from '../app/domain/catalog-data.ts';
 
-const line = (name: string, qty: number, options: string[] = []): OrderItemView => ({ name, qty, options });
+const line = (name: string, qty: number, options: string[] = []): OrderItemView => ({ name, qty, unit: '잔', options });
 
 function order(number: number, items: OrderItemView[]): OrderView {
   return {
@@ -24,7 +24,7 @@ function context(store: InventoryStore, orders: OrderView[], patch: Partial<Agen
 describe('inventory store (SQLite, data/inventory.json)', () => {
   it('seeds every item from inventory.json and reads recipe usage', () => {
     const store = new InventoryStore(':memory:');
-    assert.equal(store.items().length, 31);
+    assert.equal(store.items().length, 32, 'inventory.json items including tiramisu');
     assert.equal(store.items().find(({ id }) => id === 'beans')?.on_hand, 3600);
     assert.equal(lineUsage(line('아이스 아메리카노', 2), store.usage).get('beans'), 72);
   });
@@ -116,7 +116,7 @@ describe('wizard agent messages', () => {
     const store = new InventoryStore(':memory:');
     const coldBrew = (number: number) => order(number, [line('콜드브루', 5)]);
     const views = inventoryViews(context(store, [coldBrew(1), coldBrew(2), coldBrew(3)]));
-    assert.equal(views.length, 31);
+    assert.equal(views.length, 32);
     assert.deepEqual([views[0].id, views[0].status], ['cold_brew', 'short']);
     assert.match(views[0].note, /^\d번 주문 #\d부터 모자람, 콜드브루 기준 \d+잔 분량$/);
     assert.ok(views[0].menus.includes('콜드브루'));

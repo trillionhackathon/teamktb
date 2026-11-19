@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { callApi, orderPath } from './client/api.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
-import type { BoardReview, Decision, Note, Slot4Info } from './domain/types.ts';
+import type { BoardReview, Decision, Note, QuickLane, Slot4Info } from './domain/types.ts';
 import type { BoardSnapshot, OrderView } from './domain/views.ts';
 import type { AgentResponse } from './api/agent/route.ts';
 import type { AgentMessage as AgentMessageData } from './server/agent.ts';
@@ -16,11 +16,18 @@ const aiStatusLabels: Record<Decision['ai_status'], string> = { connected: 'AI �
 const FIXED_COUNT = 4;
 const WAITING_COUNT = 4;
 
-function reviewHint(review: BoardReview, groupCount: number): string {
-  if (review.status === 'off') return 'AI 서버가 없어 묶지 않아요';
-  if (review.status === 'checking') return 'Zoro가 비슷한 주문을 찾는 중';
-  if (review.status === 'unavailable') return 'Zoro가 답하지 못해 묶지 못했어요';
-  return groupCount > 0 ? '같은 색은 Zoro가 연달아 만들기 좋다고 묶은 주문이에요' : '이 4건은 묶을 만큼 비슷하지 않아요';
+// 위 4칸 설명. Zoro는 1번(기준)과 비슷한 2~4번만 본다.
+function reviewHint(review: BoardReview, grouped: boolean): string {
+  if (review.status === 'off') return '들어온 순서대로예요. AI 서버가 없어서 묶지 않아요';
+  if (!review.anchor) return '들어온 순서대로예요';
+  if (review.status === 'checking') return `들어온 순서대로예요. Zoro가 ${review.anchor} 주문과 비슷한 주문을 찾고 있어요`;
+  if (review.status === 'unavailable') return '들어온 순서대로예요. Zoro가 답하지 못해서 묶지 못했어요';
+  return grouped ? `들어온 순서대로예요. 초록색은 ${review.anchor} 주문과 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
+}
+
+// 카드에 붙이는 Zoro 묶음 이름표. 기준 주문은 "기준", 짝은 "같이 만들기 · Zoro 0.91"(같은 메뉴면 1.00).
+function groupTagText(group: BoardReview['groups'][string]): string {
+  return group.role === 'anchor' ? '먼저 만들기' : `같이 만들기${group.score !== undefined ? ` (Zoro ${group.score.toFixed(2)})` : ''}`;
 }
 
 // 재고, 보드 순서, 최근 처리량으로 만든 마법사 메시지(/api/agent). 보드가 바뀔 때, 그리고 30초마다 다시 읽는다.
@@ -91,9 +98,8 @@ function OrderLines({ order }: { order: OrderView }) {
       {order.items.map((item, index) => (
         <li key={index}>
           <span className="item-name">{item.name}</span>
-          <span className="item-qty">{item.qty}잔</span>
+          <span className="item-qty">{item.qty}{item.unit}</span>
           {item.options.length > 0 && <span className="item-options">{item.options.join(', ')}</span>}
-          {item.group && <span className="group-chip" style={{ color: item.group.color, borderColor: item.group.color }} title="Zoro가 레시피로 묶은 계열">{item.group.name_kr}</span>}
         </li>
       ))}
     </ul>
@@ -129,9 +135,9 @@ function Slot4Reason({ slot4, full = false }: { slot4: Slot4Info; full?: boolean
   return (
     <div className={`card-reason slot4-reason${full ? ' full' : ''}`}>
       <strong><span className={`slot4-badge is-${slot4.status === 'checking' ? 'checking' : slot4.source}`}>{slot4Label(slot4)}</span>{differs ? `룰은 ${slot4.rule_pick}` : '4번 고른 근거'}</strong>
-      {differs && <p>{slot4.rule_pick} · {slot4.facts[slot4.rule_pick]}</p>}
-      {full && <p>{slot4.order_id} · {slot4.facts[slot4.order_id]}</p>}
-      {full && scores.length > 0 && <p className="slot4-scores">Zoro 점수 {scores.map(([id, score]) => `${id} ${score.toFixed(2)}`).join(' · ')}</p>}
+      {differs && <p>{slot4.rule_pick}: {slot4.facts[slot4.rule_pick]}</p>}
+      {full && <p>{slot4.order_id}: {slot4.facts[slot4.order_id]}</p>}
+      {full && scores.length > 0 && <p className="slot4-scores">Zoro 점수 {scores.map(([id, score]) => `${id} ${score.toFixed(2)}`).join(', ')}</p>}
     </div>
   );
 }
@@ -143,14 +149,14 @@ function OrderDetail({ order, slot4, now }: { order: OrderView; slot4?: Slot4Inf
     <>
       <p className="order-detail-meta">
         <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
-        <span>{order.source_label} · {orderStatusLabels[order.status]}{order.slot ? ` · ${order.slot}번 칸` : ''}</span>
+        <span>{order.source_label}, {orderStatusLabels[order.status]}{order.slot ? `, ${order.slot}번 칸` : ''}</span>
       </p>
       <dl className="order-detail-facts">
-        <div><dt>접수</dt><dd><time dateTime={order.received_at}>{formatClock(order.received_at)}</time>{order.status === 'waiting' && ` · ${formatElapsed(order.received_at, now)}`}</dd></div>
+        <div><dt>접수</dt><dd><time dateTime={order.received_at}>{formatClock(order.received_at)}</time>{order.status === 'waiting' && ` (${formatElapsed(order.received_at, now)})`}</dd></div>
         <div><dt>주문 금액</dt><dd>{order.price_krw.toLocaleString('ko-KR')}원</dd></div>
         {order.status !== 'done' && <div><dt>남은 제조 시간</dt><dd>{order.made ? '포장만 남음' : `${order.remaining_work_seconds}초`}</dd></div>}
         {order.rider_label && <div><dt>라이더</dt><dd>{order.rider_label}</dd></div>}
-        {order.rider_eta_at && <div><dt>라이더 도착 예정</dt><dd><time dateTime={order.rider_eta_at}>{formatClock(order.rider_eta_at)}</time>{order.eta_confirmed ? ' · 확인됨' : ''}</dd></div>}
+        {order.rider_eta_at && <div><dt>라이더 도착 예정</dt><dd><time dateTime={order.rider_eta_at}>{formatClock(order.rider_eta_at)}</time>{order.eta_confirmed ? ' (확인됨)' : ''}</dd></div>}
       </dl>
       <h3>주문 메뉴</h3>
       <OrderLines order={order} />
@@ -160,19 +166,58 @@ function OrderDetail({ order, slot4, now }: { order: OrderView; slot4?: Slot4Inf
   );
 }
 
-// 아래 자연어 칸 카드. head는 1번 주문과 같이 만들 2~4번(버튼은 위 1번의 완료와 같다), next는 안내만, quick은 룰로 알리는 빠른 주문.
-const noteKindLabels: Record<Note['kind'], string> = { head: '1번 기준', next: '다음 묶음', quick: '빠른 주문' };
-
+// 아래 일머리 팁 칸 카드. head는 1번 주문과 같이 만들 2~4번(버튼은 위 1번의 완료와 같다), quick은 8번 빠른 주문 칸의 디저트.
+// 쉬운 문장으로 쓴다. 할 일(text), 이유(detail), 따로 만드는 주문이나 먼저 내는 이유(reason), Zoro 점수(작은 글씨).
 function NoteCard({ note, busy, onComplete }: { note: Note; busy: boolean; onComplete?: () => void }) {
+  const orderId = note.order_ids[0];
   return (
-    <li className={`note-card note-${note.kind}`} style={note.color ? ({ '--group': note.color } as CSSProperties) : undefined}>
-      <span className="note-kind">{noteKindLabels[note.kind]}</span>
+    <li className="note-card">
       <div className="note-body">
-        <p>{note.text}</p>
+        <p className="note-text">{note.text}</p>
         {note.detail && <p className="note-detail">{note.detail}</p>}
+        {note.reason && <p className="note-detail">{note.reason}</p>}
+        {note.zoro && <p className="note-zoro">{note.zoro}</p>}
       </div>
-      {onComplete && <button type="button" className="card-button complete" disabled={busy} onClick={onComplete}>{note.kind === 'head' ? '완료' : '내보냈어요'}</button>}
+      {onComplete && <button type="button" className="note-button" disabled={busy} onClick={onComplete}>{note.kind === 'head' ? `${orderId} 완료` : '내줬어요'}</button>}
     </li>
+  );
+}
+
+// 8번 빠른 주문 칸. 1~4번 밖(화면 밖 포함)의 첫 디저트 전용 주문이 들어오고, 1번 레시피에 손이 비는 단계가 있으면 "지금 내보내기"가 된다.
+function QuickLaneCard({ lane, order, slot, now, busy, onServe, onOpen }: {
+  lane: QuickLane; order?: OrderView; slot: number; now: number; busy: boolean; onServe: (orderId: string) => void; onOpen: (order: OrderView) => void;
+}) {
+  const served = lane.served[0];
+  if (!order) {
+    return (
+      <div role="listitem" className="quest-card quick-lane empty">
+        <span className="slot-number">{slot}</span>
+        <p className="quick-lane-title">빠른 주문 칸</p>
+        <p className="card-empty">아이스크림이나 티라미수 주문이 오면 여기 떠요. 손이 빌 때 먼저 내주세요</p>
+        {served && <p className="quick-lane-served">방금 {served.text}{served.text.endsWith('개') ? '를' : '을'} 먼저 냈어요</p>}
+      </div>
+    );
+  }
+  return (
+    <article role="listitem" className={`quest-card quick-lane${lane.ready ? ' is-ready' : ''}`} aria-label={`${slot}번 빠른 주문 칸 ${order.order_id}`}>
+      <div className="card-body" key={order.order_id}>
+        <button type="button" className="card-detail-trigger" aria-label={`${order.order_id} 주문 상세 보기`} aria-haspopup="dialog" onClick={() => onOpen(order)} />
+        <div className="card-head">
+          <span className="slot-number">{slot}</span>
+          <strong className="card-order">{order.order_id}</strong>
+          <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
+          <span className="card-detail-arrow" aria-hidden="true" />
+        </div>
+        <p className="card-wait">{formatElapsed(order.received_at, now)}<span className="quick-tag">원래 {lane.fifo_position}번째</span></p>
+        <OrderLines order={order} />
+        <p className={`quick-lane-status${lane.ready ? ' ready' : ''}`}>
+          {lane.ready && lane.idle ? `지금 내주세요 (${lane.hands_sec}초)` : `손이 빌 때 내주세요 (${lane.hands_sec}초)`}
+        </p>
+        <div className="card-foot">
+          <button type="button" className="card-button complete" disabled={busy} onClick={() => onServe(order.order_id)}>내줬어요</button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -195,17 +240,29 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
     void callApi<DemoFeedStatus>('/api/demo-feed').then((result) => { if (result.ok) setFeed(result.data); });
   }, [snapshot.state_version]);
 
+  // 시연 장면 불러오기(보드를 그 장면의 시작 상태로 바꾼다)와 장면 입력 재생.
+  async function loadScenario(scenarioId: string, trigger?: number) {
+    setBusy(true);
+    const result = await callApi('/api/scenarios', { body: trigger === undefined ? { scenario_id: scenarioId } : { scenario_id: scenarioId, trigger } });
+    setBusy(false);
+    setError(result.ok ? null : result.error);
+  }
+
   async function toggleFeed() {
     const result = await callApi<DemoFeedStatus>('/api/demo-feed', { body: { running: !feed?.running } });
     if (result.ok) setFeed(result.data);
     else setError(result.error);
   }
 
-  // 보드는 들어온 순서(FIFO) 그대로 8칸이다. 위 4칸(고정)에서만 Zoro가 비슷한 주문을 같은 색으로 묶는다.
-  const { review } = snapshot;
+  // 보드는 들어온 순서(FIFO)다. 위 4칸에서 Zoro가 1번과 비슷한 주문을 같은 색으로 묶는다.
+  // 빠른 주문 칸을 쓰면 아래 줄은 5~7번(FIFO) + 8번(빠른 주문) 이다.
+  const { review, quick_lane: lane } = snapshot;
   const fixedOrders = snapshot.board.filter(({ zone }) => zone === 'locked');
   const waitingOrders = snapshot.board.filter(({ zone }) => zone === 'flexible');
-  const groupList = [...new Map(fixedOrders.flatMap(({ order_id: id }) => (review.groups[id] ? [[review.groups[id].id, review.groups[id]] as const] : []))).values()];
+  const laneOrder = snapshot.board.find(({ zone }) => zone === 'quick');
+  const fifoWaitingCount = WAITING_COUNT - (lane.enabled ? 1 : 0);
+  const grouped = fixedOrders.some(({ order_id: id }) => review.groups[id]);
+  const companionCount = fixedOrders.filter(({ order_id: id }) => review.groups[id]?.role === 'companion').length;
   const queueCount = snapshot.board.filter(({ zone }) => zone === 'queue').length;
   const { slot4 } = snapshot;
   const aiStatus = snapshot.decision.ai_status;
@@ -241,10 +298,10 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
     setError(result.ok ? null : result.error);
   }
 
-  // 빠른 주문 카드의 버튼: 그 주문이 완료된다. (1번 카드의 완료는 위 1번의 완료 버튼과 같은 completeOrder다.)
-  async function handleNote(note: Note) {
+  // 빠른 주문 카드(8번 칸, 아래 팁 칸)의 버튼: 그 주문이 완료된다. (1번 카드의 완료는 위 1번의 완료 버튼과 같은 completeOrder다.)
+  async function serveQuick(orderId: string) {
     setBusy(true);
-    const result = await callApi('/api/notes', { body: { note_id: note.id } });
+    const result = await callApi('/api/notes', { body: { note_id: `quick:${orderId}` } });
     setBusy(false);
     setError(result.ok ? null : result.error);
   }
@@ -262,6 +319,14 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                 {feed.running ? `자동 주문 켜짐 ${feed.created}건` : '자동 주문 켜기'}
               </button>
             )}
+            <span className="scenario-control">
+              <select aria-label="시연 장면" value={snapshot.scenario?.id ?? ''} disabled={busy} onChange={(event) => void loadScenario(event.target.value)}>
+                {snapshot.scenarios.map(({ id, title }) => <option key={id} value={id}>{id} {title}</option>)}
+              </select>
+              {snapshot.scenario?.triggers.map((label, index) => (
+                <button key={label} type="button" className="secondary-button" disabled={busy} onClick={() => void loadScenario(snapshot.scenario!.id, index)}>{label}</button>
+              ))}
+            </span>
             <Link className="topbar-link" href="/kiosk" target="_blank">키오스크 열기</Link>
             <Link className="topbar-link" href="/delivery" target="_blank">배달 목업 열기</Link>
           </span>
@@ -321,14 +386,12 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             </div>
             {error && <p className="board-error" role="alert">{error}</p>}
 
-            <p className="row-label">지금 만들 주문 <span>{reviewHint(review, groupList.length)}</span></p>
-            {groupList.length > 0 && (
+            <p className="row-label">지금 만들 주문 <span>{reviewHint(review, grouped)}</span></p>
+            {grouped && review.anchor && (
               <ul className="group-legend" aria-label="Zoro가 묶은 주문">
-                {groupList.map((group) => (
-                  <li key={group.id} style={{ color: group.color, borderColor: group.color }}>
-                    <i style={{ background: group.color }} aria-hidden="true" />{group.label} {group.size}건 <span>연달아 만들기 좋아요</span>
-                  </li>
-                ))}
+                <li style={{ color: review.groups[review.anchor].color, borderColor: review.groups[review.anchor].color }}>
+                  <i style={{ background: review.groups[review.anchor].color }} aria-hidden="true" />{review.anchor} 기준 + {companionCount}건 <span>같이 만들어요</span>
+                </li>
               </ul>
             )}
             <div className="quest-row" role="list" aria-label="고정 주문 4칸">
@@ -339,7 +402,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                 const group = review.groups[order.order_id];
                 return (
                   <article key={slot} role="listitem" className={`quest-card fixed${group ? ' grouped' : ''}${order.made ? ' is-made' : ''}`} style={group ? ({ '--group': group.color } as CSSProperties) : undefined}
-                    aria-label={`${slot}번 칸 ${order.order_id} 주문${group ? `, ${group.label}` : ''}`}>
+                    aria-label={`${slot}번 칸 ${order.order_id} 주문${group ? `, ${groupTagText(group)}` : ''}`}>
                     <div className="card-body" key={order.order_id}>
                       <button type="button" className="card-detail-trigger" aria-label={`${order.order_id} 주문 상세 보기`} aria-haspopup="dialog" onClick={() => setSelectedOrder(order)} />
                       <div className="card-head">
@@ -348,7 +411,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                         <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
                         <span className="card-detail-arrow" aria-hidden="true" />
                       </div>
-                      <p className="card-wait">{formatElapsed(order.received_at, now)}{group && <span className="group-tag" style={{ background: group.color }}>{group.label}</span>}</p>
+                      <p className="card-wait">{formatElapsed(order.received_at, now)}{group && <span className="group-tag" style={{ background: group.color }}>{groupTagText(group)}</span>}</p>
                       <OrderLines order={order} />
                       <OrderFlags order={order} />
                       <div className="card-foot">
@@ -360,9 +423,9 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
               })}
             </div>
 
-            <p className="row-label">대기 주문 <span>들어온 순서 · 위 주문이 끝나면 차례로 올라가요</span></p>
-            <div className="quest-row" role="list" aria-label="대기 주문 4칸">
-              {Array.from({ length: WAITING_COUNT }, (_, index) => {
+            <p className="row-label">대기 주문 <span>위 주문이 끝나면 들어온 순서대로 올라가요{lane.enabled ? '. 8번은 빨리 끝나는 디저트 칸이에요' : ''}</span></p>
+            <div className="quest-row" role="list" aria-label={lane.enabled ? '대기 주문 3칸과 빠른 주문 칸' : '대기 주문 4칸'}>
+              {Array.from({ length: fifoWaitingCount }, (_, index) => {
                 const order = waitingOrders[index];
                 const slot = FIXED_COUNT + index + 1;
                 if (!order) return <div key={slot} role="listitem" className="quest-card empty candidate"><span className="slot-number">{slot}</span><p className="card-empty">빈 칸</p></div>;
@@ -383,19 +446,22 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                   </article>
                 );
               })}
+              {lane.enabled && (
+                <QuickLaneCard lane={lane} order={laneOrder} slot={FIXED_COUNT + WAITING_COUNT} now={now} busy={busy} onServe={serveQuick} onOpen={setSelectedOrder} />
+              )}
             </div>
           </section>
 
           <section className="notice-section" aria-labelledby="notice-title" aria-live="polite">
             <div className="section-heading">
-              <h2 id="notice-title">1번 기준으로 같이 만들기</h2>
+              <h2 id="notice-title">일머리 팁</h2>
               <span className="section-meta">{snapshot.notes.length > 0 ? `${snapshot.notes.length}건` : '알림 없음'}</span>
             </div>
             {snapshot.notes.length > 0 ? (
               <ul className="note-list">
                 {snapshot.notes.map((note) => (
                   <NoteCard key={note.id} note={note} busy={busy}
-                    onComplete={note.kind === 'head' && fixedOrders[0] ? () => completeOrder(fixedOrders[0]) : note.kind === 'quick' ? () => handleNote(note) : undefined} />
+                    onComplete={note.kind === 'head' && fixedOrders[0] ? () => completeOrder(fixedOrders[0]) : note.kind === 'quick' ? () => serveQuick(note.order_ids[0]) : undefined} />
                 ))}
               </ul>
             ) : <p className="tip-empty">지금 만들 주문이 없어요.</p>}

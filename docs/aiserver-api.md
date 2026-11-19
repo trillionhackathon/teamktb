@@ -114,6 +114,32 @@ aiserver는 요청마다 후보, 점수, 선택, 걸린 시간을 `pick-next {..
 - 4번이 정해지면 그 주문보다 먼저 접수된 후보의 `overtaken`을 1 올린다. 이 값은 `/ai/decide`의 `overtaken`으로도 보낸다.
 - 화면 4번 카드에는 "확인 중", "Zoro 0.78", "룰" 중 하나를 붙이고, Zoro가 룰과 다르게 골랐으면 "룰은 #110 · (사실 문장)"을 쓴다.
 
+
+## POST /ai/group-orders (위 4칸 묶기, 1번 기준)
+
+위 4칸 구성이나 기준 주문이 바뀔 때마다 부른다. FIFO 보드에서는 `anchor`(기준 주문, 보통 1번)를 보내고, Zoro는 기준 주문 메뉴 × 나머지 메뉴 짝마다 noul 질문 하나("연달아 만들면 같은 장비·작업을 이어 쓰나?")에 답한다. 같은 메뉴 짝은 묻지 않고 1로 본다. 한 번 물은 짝은 aiserver가 기억한다. 타임아웃은 15초(`groupTimeoutMs`)다.
+
+teamktb가 보내기 전에 빼는 것: 이미 만든 주문(`made`), 장비 고장으로 보류된 주문, `batch_blocking` 옵션(디카페인, 오트밀크)이 붙은 줄.
+
+```json
+{ "anchor": "#101", "orders": [
+  { "id": "#101", "menus": [{ "id": "latte", "name": "카페 라떼", "equipment": ["espresso_machine", "steam_wand"], "steps": ["..."] }] },
+  { "id": "#102", "menus": [{ "id": "iced_latte", "name": "아이스 카페 라떼", "equipment": ["espresso_machine", "ice_dispenser"], "steps": ["..."] }] }
+] }
+```
+
+```json
+{ "groups": { "#101": 1, "#102": 1 }, "scores": { "#102": 0.85, "#103": 0.12 }, "fallback": false }
+```
+
+| 응답 필드 | 뜻 |
+| --- | --- |
+| `groups` | 기준 주문과 그 짝(점수 0.5 이상). 짝이 없으면 빈 객체 |
+| `scores` | `anchor`가 있을 때만. 기준이 아닌 주문마다 Zoro가 본 비슷한 정도(0~1) |
+| `fallback` | Zoro가 답하지 못했으면 `true`. teamktb는 묶지 않고 "Zoro가 답하지 못했어요"로 표시한다 |
+
+`anchor`를 빼면 예전처럼 모든 주문 짝을 평균 연결로 묶는다(`scores`는 비어 있음).
+
 ## POST /ai/decide
 
 일머리 팁을 받는다. 응답에는 보드 재배치(`orders`, `moves`)와 예상 완료 시각도 있지만 teamktb는 **팁만 쓰고 보드 순서는 바꾸지 않는다**(보드 순서는 `/ai/pick-next`만 바꾼다).

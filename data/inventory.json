@@ -425,6 +425,20 @@
         "초코 아이스크림": 80
       }
     },
+    "tiramisu": {
+      "name_kr": "티라미수",
+      "group": "count",
+      "unit": "ea",
+      "full": 12,
+      "on_hand": 10,
+      "danger_below": 2,
+      "warn_below": 4,
+      "reorder_label": "티라미수 1판 (6조각)",
+      "reorder_qty": 6,
+      "usage_per_cup": {
+        "티라미수": 1
+      }
+    },
     "teabag_chamomile": {
       "name_kr": "캐모마일 티백",
       "group": "count",

@@ -3,6 +3,7 @@ import type { OrderStore } from './order-store.ts';
 
 // 시연용 자동 주문. 서버에서 5~12초마다 예시 주문을 넣는다. 대시보드를 여러 개 열어도 주문은 한 번씩만 들어간다.
 // 묶어 만들기가 잘 보이도록 아이스 아메리카노와 라떼 계열 비중을 높였고, 옵션은 가끔만 붙인다.
+// 빠른 주문 칸(8번)이 보이도록 가끔 매장·포장 디저트 전용 주문(아이스크림, 티라미수)을 넣는다.
 
 const menuWeights: [string, number][] = [
   ['iced_americano', 30], ['iced_latte', 12], ['vanilla_latte_ice', 12], ['latte', 8], ['cold_brew', 8],
@@ -12,6 +13,9 @@ const channelWeights: [Channel, number][] = [['dine-in', 40], ['takeout', 35], [
 const qtyWeights: [number, number][] = [[1, 60], [2, 30], [3, 10]];
 const iceLessMenus = new Set(['iced_americano', 'cold_brew', 'iced_latte']);
 const notes = ['캐리어에 담아 주세요', '빨대는 빼 주세요', '얼음 적게 부탁드려요'];
+const dessertWeights: [string, number][] = [['ice_cream_vanilla', 5], ['ice_cream_choco', 3], ['tiramisu', 3]];
+const dessertChannelWeights: [Channel, number][] = [['dine-in', 50], ['takeout', 50]];
+const dessertShare = 0.18;
 
 const minDelayMs = 5000;
 const maxDelayMs = 12000;
@@ -36,6 +40,7 @@ function pick<T>(weights: [T, number][], random: () => number): T {
 }
 
 export function demoOrder(random: () => number = Math.random): { channel: Channel; menu_items: MenuItemInput[]; request_note?: string } {
+  if (random() < dessertShare) return { channel: pick(dessertChannelWeights, random), menu_items: [{ menu: pick(dessertWeights, random), qty: 1 }] };
   const lineCount = random() < 0.7 ? 1 : 2;
   const menus = new Set<string>();
   while (menus.size < lineCount) menus.add(pick(menuWeights, random));

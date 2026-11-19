@@ -213,9 +213,11 @@ describe('aiserver integration', { skip: !process.env.AISERVER_URL && 'AISERVER_
 
 describe('group contract', () => {
   it('accepts the aiserver GroupResult and rejects malformed values', () => {
-    assert.deepEqual(parseGroupResult({ groups: { '#101': 1 }, fallback: false }), { groups: { '#101': 1 }, fallback: false });
-    assert.deepEqual(parseGroupResult({}), { groups: {}, fallback: false });
+    assert.deepEqual(parseGroupResult({ groups: { '#101': 1 }, fallback: false }), { groups: { '#101': 1 }, scores: {}, fallback: false });
+    assert.deepEqual(parseGroupResult({}), { groups: {}, scores: {}, fallback: false });
+    assert.deepEqual(parseGroupResult({ groups: { '#101': 1, '#103': 1 }, scores: { '#102': 0.12, '#103': 0.91 } }), { groups: { '#101': 1, '#103': 1 }, scores: { '#102': 0.12, '#103': 0.91 }, fallback: false });
     assert.equal(parseGroupResult({ groups: { '#101': 'a' } }), undefined);
     assert.equal(parseGroupResult({ groups: {}, fallback: 'no' }), undefined);
+    assert.equal(parseGroupResult({ groups: {}, scores: { '#102': 1.4 } }), undefined, 'scores are probabilities');
   });
 });

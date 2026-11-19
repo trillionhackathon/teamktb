@@ -5,8 +5,10 @@ import type { Order, OwnerLimits } from './types.ts';
 // 1~4번은 고정, 5~8번은 들어온 순서로 대기, 9번째부터는 화면 밖 대기열이다.
 // 1번(고정칸) 완료 때만 2~4번을 당기고 5~8번 중 하나를 골라 4번에 넣는다(order-store.ts fillSlot4).
 // fifo: 들어온 순서(FIFO)로만 채운다. 4번 고르기(Zoro)와 빠른 메뉴 끌어오기를 끄고, 비슷한 주문은 화면에서 묶어 알리기만 한다.
+// quickLane(fifo와 함께): 마지막 칸(8번)은 빠른 주문 전용이다. FIFO는 1~7번만 쓰고, 8번에는 1~4번 밖에서 가장 먼저 온
+// 매장·포장 디저트 전용 주문을 띄워 1번 레시피의 손 비는 시간에 먼저 내보낸다(order-store.ts quickLane).
 // quickMenuSec: 이 시간 이하로 만드는 주문은 대기칸 앞으로 올린다. quickSlots: 대기칸 중 앞 몇 칸까지. 둘 중 하나라도 없으면 끈다.
-export type BoardConfig = { lockedCount: number; visibleCount: number; quickMenuSec?: number; quickSlots?: number; fifo?: boolean };
+export type BoardConfig = { lockedCount: number; visibleCount: number; quickMenuSec?: number; quickSlots?: number; fifo?: boolean; quickLane?: boolean };
 
 // cafe_db.json output_example(/ai/decide)의 이동 사유를 화면 말로 바꾼다.
 export const moveReasonLabels: Record<string, string> = {

@@ -22,7 +22,29 @@ const timedMenus = cafeDb.menus as Record<string, TimedMenu>;
 const tierReference: Record<number, string> = { 1: 'iced_americano', 2: 'latte', 3: 'strawberry_smoothie' };
 const strawberryGramsPerServing = 180;
 
-type RecipeDrink = (typeof recipe.drinks)[number] & { consumes_stock?: Record<string, number> };
+type StepSecond = { text?: string; sec: number; attended: boolean };
+type RecipeDrink = (typeof recipe.drinks)[number] & { consumes_stock?: Record<string, number>; step_seconds?: StepSecond[] };
+
+// 손이 비는 단계 이름. 레시피 문장을 짧은 말로 바꾼다(예: "에스프레소 2샷을 추출한다(자동 정지)" → "샷 추출").
+function idleLabel(text: string): string {
+  if (text.includes('추출')) return '샷 추출';
+  if (text.includes('프로그램') || text.includes('블렌')) return '블렌더';
+  if (text.includes('우린') || text.includes('우려')) return '티 우리기';
+  if (text.includes('프레스') || text.includes('그릴')) return '그릴';
+  return '기계 대기';
+}
+
+function stepTimes(drink: RecipeDrink): Pick<MenuDrink, 'hands_sec' | 'idle'> {
+  const timed = drink.step_seconds ?? [];
+  if (!timed.length) return {};
+  const hands = timed.filter(({ attended }) => attended).reduce((sum, { sec }) => sum + sec, 0);
+  let idle: MenuDrink['idle'];
+  timed.forEach((step, index) => {
+    if (step.attended || (idle && idle.sec >= step.sec)) return;
+    idle = { sec: step.sec, label: idleLabel(step.text ?? drink.steps[index] ?? '') };
+  });
+  return { hands_sec: hands, ...(idle ? { idle } : {}) };
+}
 
 function toDrink(drink: RecipeDrink): MenuDrink {
   const measured = timedMenus[drink.id];
@@ -46,6 +68,7 @@ function toDrink(drink: RecipeDrink): MenuDrink {
     espresso_shots: consumes.espresso_shot ?? 0,
     strawberry_servings: (consumes.strawberry_pulp ?? 0) / strawberryGramsPerServing,
     group: menuGroup(drink.id),
+    ...stepTimes(drink),
   };
 }
 
@@ -77,6 +100,7 @@ export const boardConfig = {
   quickMenuSec: (cafeDb.kds_board as { quick_menu_sec?: number }).quick_menu_sec,
   quickSlots: (cafeDb.kds_board as { quick_slots?: number }).quick_slots,
   fifo: (cafeDb.kds_board as { fifo?: boolean }).fifo,
+  quickLane: (cafeDb.kds_board as { quick_lane?: boolean }).quick_lane,
 };
 
 // 사장님 기준(data/owner_rules.json). sentences는 Zoro에, limits는 사실 계산과 룰에 쓴다.
