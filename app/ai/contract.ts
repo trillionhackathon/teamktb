@@ -164,12 +164,13 @@ export function parsePickResult(value: unknown): AiPickResult | undefined {
 // scores는 anchor가 아닌 주문마다 anchor와 비슷한 정도(Zoro noul, 같은 메뉴면 1)다.
 export type AiGroupMenu = { id: string; name: string; equipment: string[]; steps: string[] };
 export type AiGroupRequest = { orders: { id: string; menus: AiGroupMenu[] }[]; anchor?: string };
-export type AiGroupResult = { groups: Record<string, number>; scores: Record<string, number>; fallback: boolean };
+export type AiGroupResult = { groups: Record<string, number>; scores: Record<string, number>; matched_menus: Record<string, string[]>; fallback: boolean };
 
 export function parseGroupResult(value: unknown): AiGroupResult | undefined {
   if (!isRecord(value)) return undefined;
-  const { groups = {}, scores = {}, fallback = false } = value;
+  const { groups = {}, scores = {}, matched_menus: matched = {}, fallback = false } = value;
   if (!isRecord(groups) || !Object.values(groups).every((n) => Number.isInteger(n)) || typeof fallback !== 'boolean') return undefined;
   if (!isRecord(scores) || !Object.values(scores).every((n) => typeof n === 'number' && n >= 0 && n <= 1)) return undefined;
-  return { groups: groups as Record<string, number>, scores: scores as Record<string, number>, fallback };
+  if (!isRecord(matched) || !Object.values(matched).every((ids) => Array.isArray(ids) && ids.every((id) => typeof id === 'string'))) return undefined;
+  return { groups: groups as Record<string, number>, scores: scores as Record<string, number>, matched_menus: matched as Record<string, string[]>, fallback };
 }

@@ -22,12 +22,12 @@ function reviewHint(review: BoardReview, grouped: boolean): string {
   if (!review.anchor) return '들어온 순서대로예요';
   if (review.status === 'checking') return `들어온 순서대로예요. Zoro가 ${review.anchor} 주문과 비슷한 주문을 찾고 있어요`;
   if (review.status === 'unavailable') return '들어온 순서대로예요. Zoro가 답하지 못해서 묶지 못했어요';
-  return grouped ? `들어온 순서대로예요. 분홍색은 ${review.anchor} 주문과 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
+  return grouped ? `들어온 순서대로예요. 같은 색끼리 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
 }
 
-// 카드에 붙이는 Zoro 묶음 이름표. 기준 주문은 "기준", 짝은 "같이 만들기 · Zoro 0.91"(같은 메뉴면 1.00).
+// 카드에 붙이는 묶음 이름표.
 function groupTagText(group: BoardReview['groups'][string]): string {
-  return group.role === 'anchor' ? '먼저 만들기' : `같이 만들기${group.score !== undefined ? ` (Zoro ${group.score.toFixed(2)})` : ''}`;
+  return group.role === 'anchor' ? '먼저 만들기' : '같이 만들기';
 }
 
 // 재고, 보드 순서, 최근 처리량으로 만든 마법사 메시지(/api/agent). 보드가 바뀔 때, 그리고 30초마다 다시 읽는다.
@@ -109,7 +109,7 @@ function OrderLines({ order }: { order: OrderView }) {
   return (
     <ul className={`card-items cols-${columnsFor(order.items.length)}`}>
       {order.items.map((item, index) => (
-        <li key={index}>
+        <li key={index} className={item.made ? 'item-made' : undefined}>
           <span className="item-name">{item.name}</span>
           <span className="item-qty">{item.qty}{item.unit}</span>
           {item.options.length > 0 && <span className="item-options">{item.options.join(', ')}</span>}
@@ -179,19 +179,20 @@ function OrderDetail({ order, slot4, now }: { order: OrderView; slot4?: Slot4Inf
   );
 }
 
-// 아래 일머리 팁 칸 카드. head는 1번 주문과 같이 만들 2~4번(버튼은 위 1번의 완료와 같다), quick은 8번 빠른 주문 칸의 디저트.
-// 쉬운 문장으로 쓴다. 할 일(text), 이유(detail), 따로 만드는 주문이나 먼저 내는 이유(reason), Zoro 점수(작은 글씨).
-function NoteCard({ note, busy, onComplete }: { note: Note; busy: boolean; onComplete?: () => void }) {
-  const orderId = note.order_ids[0];
+// 아래 제조 작업과 빠른 주문 카드.
+function NoteCard({ note, busy, next, onComplete }: { note: Note; busy: boolean; next?: boolean; onComplete?: () => void }) {
   return (
-    <li className="note-card">
+    <li className={`note-card${note.kind === 'task' ? ' task-card' : ''}${note.kind === 'quick' ? ' quick-note' : ''}${note.done ? ' is-done' : ''}${next ? ' is-next' : ''}`}
+      style={note.kind === 'task' && note.color ? ({ '--task-color': note.color } as CSSProperties) : undefined}>
       <div className="note-body">
+        {next && <span className="task-next">다음 작업</span>}
         <p className="note-text">{withOrderIds(note.text)}</p>
+        {note.parts && <p className="task-parts">{withOrderIds(note.parts.map((part) => `${part.order_id} ${part.qty}${note.unit ?? '잔'}`).join(' · '))}</p>}
         {note.detail && <p className="note-detail">{withOrderIds(note.detail)}</p>}
         {note.reason && <p className="note-detail">{withOrderIds(note.reason)}</p>}
         {note.zoro && <p className="note-zoro">{withOrderIds(note.zoro)}</p>}
       </div>
-      {onComplete && <button type="button" className="note-button" disabled={busy} onClick={onComplete}>{note.kind === 'head' ? `${orderId} 완료` : '내줬어요'}</button>}
+      {note.done ? <span className="task-done">제조 완료됨</span> : onComplete && <button type="button" className="note-button" disabled={busy || note.ready === false} onClick={onComplete}>{note.kind === 'task' ? '제조 완료' : '내줬어요'}</button>}
     </li>
   );
 }
@@ -275,10 +276,14 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const laneOrder = snapshot.board.find(({ zone }) => zone === 'quick');
   const fifoWaitingCount = WAITING_COUNT - (lane.enabled ? 1 : 0);
   const grouped = fixedOrders.some(({ order_id: id }) => review.groups[id]);
-  const companionCount = fixedOrders.filter(({ order_id: id }) => review.groups[id]?.role === 'companion').length;
   const queueCount = snapshot.board.filter(({ zone }) => zone === 'queue').length;
   const { slot4 } = snapshot;
   const aiStatus = snapshot.decision.ai_status;
+  const visibleNotes = snapshot.notes.filter((note) => note.kind !== 'head');
+  const taskNotes = visibleNotes.filter((note) => note.kind === 'task');
+  // 위 4칸 카드 색: 그 주문이 낀 작업(아래 팁 칸)과 같은 색을 쓴다. 한 주문이 작업 여러 개에 걸치면 마지막 작업 색을 쓴다(드묾).
+  const orderTaskColor = Object.fromEntries(taskNotes.flatMap((note) => note.parts?.map(({ order_id }) => [order_id, note.color!]) ?? []));
+  const nextTaskId = visibleNotes.find((note) => note.kind === 'task' && !note.done)?.id;
   const { agent, refresh: refreshAgent } = useAgent(snapshot.board.slice(0, FIXED_COUNT + WAITING_COUNT).map(({ order_id: id }) => id), snapshot.state_version);
   const { summary: agentSummary, log: agentLog, dismissItem } = useAgentLog(agent);
   const agentList = useRef<HTMLOListElement>(null);
@@ -311,7 +316,14 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
     setError(result.ok ? null : result.error);
   }
 
-  // 빠른 주문 카드(8번 칸, 아래 팁 칸)의 버튼: 그 주문이 완료된다. (1번 카드의 완료는 위 1번의 완료 버튼과 같은 completeOrder다.)
+  async function completeTask(noteId: string) {
+    setBusy(true);
+    const result = await callApi('/api/notes', { body: { note_id: noteId } });
+    setBusy(false);
+    setError(result.ok ? null : result.error);
+  }
+
+  // 빠른 주문 카드(8번 칸, 아래 팁 칸)의 버튼: 그 주문이 완료된다.
   async function serveQuick(orderId: string) {
     setBusy(true);
     const result = await callApi('/api/notes', { body: { note_id: `quick:${orderId}` } });
@@ -400,21 +412,16 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             {error && <p className="board-error" role="alert">{error}</p>}
 
             <p className="row-label">지금 만들 주문 <span>{reviewHint(review, grouped)}</span></p>
-            {grouped && review.anchor && (
-              <ul className="group-legend" aria-label="Zoro가 묶은 주문">
-                <li style={{ color: review.groups[review.anchor].color, borderColor: review.groups[review.anchor].color }}>
-                  <i style={{ background: review.groups[review.anchor].color }} aria-hidden="true" />{review.anchor} 기준 + {companionCount}건 <span>같이 만들어요</span>
-                </li>
-              </ul>
-            )}
             <div className="quest-row" role="list" aria-label="고정 주문 4칸" style={rowColumns(Array.from({ length: FIXED_COUNT }, (_, index) => fixedOrders[index]))}>
               {Array.from({ length: FIXED_COUNT }, (_, index) => {
                 const order = fixedOrders[index];
                 const slot = index + 1;
                 if (!order) return <div key={slot} role="listitem" className="quest-card empty"><span className="slot-number">{slot}</span><p className="card-empty">빈 칸</p></div>;
                 const group = review.groups[order.order_id];
+                const color = group && (orderTaskColor[order.order_id] ?? group.color);
                 return (
-                  <article key={slot} role="listitem" className={`quest-card fixed${group ? ' grouped' : ''}${order.made ? ' is-made' : ''}`} style={group ? ({ '--group': group.color } as CSSProperties) : undefined}
+                  <article key={slot} role="listitem" className={`quest-card fixed${group ? ' grouped' : ''}${order.made ? ' is-made' : ''}`}
+                    style={color ? ({ '--group': color } as CSSProperties) : undefined}
                     aria-label={`${slot}번 칸 ${order.order_id} 주문${group ? `, ${groupTagText(group)}` : ''}`}>
                     <div className="card-body" key={order.order_id}>
                       <button type="button" className="card-detail-trigger" aria-label={`${order.order_id} 주문 상세 보기`} aria-haspopup="dialog" onClick={() => setSelectedOrder(order)} />
@@ -424,7 +431,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                         <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
                         <span className="card-detail-arrow" aria-hidden="true" />
                       </div>
-                      <p className="card-wait">{formatElapsed(order.received_at, now)}{group && <span className="group-tag" style={{ background: group.color }}>{groupTagText(group)}</span>}</p>
+                      <p className="card-wait">{formatElapsed(order.received_at, now)}{group && <span className="group-tag" style={{ background: color }}>{groupTagText(group)}</span>}</p>
                       <OrderLines order={order} />
                       <OrderFlags order={order} />
                       <div className="card-foot">
@@ -469,13 +476,22 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
           <section className="notice-section" aria-labelledby="notice-title" aria-live="polite">
             <div className="section-heading">
               <h2 id="notice-title">일머리 팁</h2>
-              <span className="section-meta">{snapshot.notes.length > 0 ? `${snapshot.notes.length}건` : '알림 없음'}</span>
+              <span className="section-meta">{visibleNotes.filter((note) => note.kind === 'task' && !note.done).length}건 남음</span>
             </div>
-            {snapshot.notes.length > 0 ? (
+            {taskNotes.length > 0 && (
+              <ul className="group-legend" aria-label="제조 작업 색상">
+                {taskNotes.map((note) => <li key={note.id} style={{ color: note.color, borderColor: note.color }}>
+                  <i style={{ background: note.color }} aria-hidden="true" />{note.text}
+                </li>)}
+              </ul>
+            )}
+            {review.status === 'checking' && <p className="note-status">먼저 1번 주문을 만드세요. 함께 만들 메뉴를 확인 중이에요.</p>}
+            {review.status === 'unavailable' && <p className="note-status">함께 만들 메뉴를 확인하지 못했어요. 먼저 1번 주문을 만드세요.</p>}
+            {visibleNotes.length > 0 ? (
               <ul className="note-list">
-                {snapshot.notes.map((note) => (
-                  <NoteCard key={note.id} note={note} busy={busy}
-                    onComplete={note.kind === 'head' && fixedOrders[0] ? () => completeOrder(fixedOrders[0]) : note.kind === 'quick' ? () => serveQuick(note.order_ids[0]) : undefined} />
+                {visibleNotes.map((note) => (
+                  <NoteCard key={note.id} note={note} busy={busy} next={note.id === nextTaskId}
+                    onComplete={note.kind === 'task' ? () => completeTask(note.id) : note.kind === 'quick' ? () => serveQuick(note.order_ids[0]) : undefined} />
                 ))}
               </ul>
             ) : <p className="tip-empty">지금 만들 주문이 없어요.</p>}
