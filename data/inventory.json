@@ -1,0 +1,549 @@
+{
+  "note": "가짜 재고 데이터. 재료와 한 잔당 사용량은 recipe.json에서 읽었고, 현재 재고(on_hand)와 가득 찼을 때(full), 주문 단위는 지어낸 값이다. 위험은 가장 많이 쓰는 메뉴 8잔 분량 아래, 주의는 20잔 분량 아래. live가 있는 항목(원두, 딸기)은 주문 저장소가 세는 값을 쓴다. oat_milk와 low_fat_milk는 옵션으로만 쓰여 사용량 계산에서 빠졌고 기준을 용량의 15%, 40%로 정했다.",
+  "units": {
+    "g": "1000g = 1kg",
+    "ml": "1000ml = 1L",
+    "ea": "개",
+    "serving": "회분"
+  },
+  "threshold_rule": {
+    "danger_cups": 8,
+    "warn_cups": 20
+  },
+  "items": {
+    "beans": {
+      "name_kr": "원두",
+      "group": "solid",
+      "unit": "g",
+      "full": 5000,
+      "on_hand": 3600,
+      "danger_below": 290,
+      "warn_below": 720,
+      "reorder_label": "1kg 봉지 5개",
+      "reorder_qty": 5000,
+      "usage_per_cup": {
+        "아이스 아메리카노": 36,
+        "따뜻한 아메리카노": 36,
+        "카페 라떼": 36,
+        "아이스 카페 라떼": 36,
+        "카푸치노": 36,
+        "아이스 바닐라 라떼": 36,
+        "아이스 카라멜 마키아토": 36,
+        "아이스 카페 모카": 36,
+        "에스프레소": 36,
+        "플랫 화이트": 36,
+        "아인슈페너": 36,
+        "아포가토": 18
+      },
+      "live": {
+        "signal": "coffee_beans_shots_left",
+        "unit_amount": 18
+      }
+    },
+    "ice": {
+      "name_kr": "얼음",
+      "group": "solid",
+      "unit": "g",
+      "full": 40000,
+      "on_hand": 26000,
+      "danger_below": 1280,
+      "warn_below": 3200,
+      "reorder_label": "얼음 10kg 포대 3개",
+      "reorder_qty": 30000,
+      "usage_per_cup": {
+        "초코칩 프라페": 160,
+        "그린티 프라페": 160,
+        "아이스 아메리카노": 150,
+        "아이스 카페 라떼": 150,
+        "아이스 바닐라 라떼": 150,
+        "아이스 카라멜 마키아토": 150,
+        "아이스 카페 모카": 150,
+        "콜드브루": 150,
+        "아이스 그린티 라떼": 150,
+        "아이스 초콜릿": 150,
+        "복숭아 아이스티": 150,
+        "레몬에이드": 150,
+        "자몽에이드": 150,
+        "아인슈페너": 150,
+        "아이스 얼그레이 티": 150,
+        "아이스 캐모마일 티": 150,
+        "아이스 유자차": 150,
+        "아이스 딸기 라떼": 140,
+        "오렌지 주스": 120,
+        "망고 스무디": 80
+      }
+    },
+    "milk": {
+      "name_kr": "우유",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 24000,
+      "on_hand": 18000,
+      "danger_below": 1600,
+      "warn_below": 4000,
+      "reorder_label": "1L 팩 12개",
+      "reorder_qty": 12000,
+      "usage_per_cup": {
+        "아이스 그린티 라떼": 200,
+        "아이스 초콜릿": 200,
+        "아이스 딸기 라떼": 200,
+        "핫초코": 200,
+        "그린티 프라페": 190,
+        "카페 라떼": 180,
+        "아이스 카페 라떼": 180,
+        "초코칩 프라페": 180,
+        "아이스 바닐라 라떼": 170,
+        "아이스 카라멜 마키아토": 170,
+        "아이스 카페 모카": 160,
+        "딸기 스무디": 160,
+        "블루베리 스무디": 160,
+        "망고 스무디": 150,
+        "플랫 화이트": 150,
+        "카푸치노": 140
+      }
+    },
+    "oat_milk": {
+      "name_kr": "오트밀크",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 6000,
+      "on_hand": 700,
+      "danger_below": 900,
+      "warn_below": 2400,
+      "reorder_label": "1L 팩 6개",
+      "reorder_qty": 6000,
+      "usage_per_cup": {}
+    },
+    "low_fat_milk": {
+      "name_kr": "저지방 우유",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 6000,
+      "on_hand": 4200,
+      "danger_below": 900,
+      "warn_below": 2400,
+      "reorder_label": "1L 팩 6개",
+      "reorder_qty": 6000,
+      "usage_per_cup": {}
+    },
+    "strawberry": {
+      "name_kr": "딸기 과육",
+      "group": "solid",
+      "unit": "g",
+      "full": 8000,
+      "on_hand": 5400,
+      "danger_below": 1440,
+      "warn_below": 3600,
+      "reorder_label": "냉동 딸기 1kg 봉지 5개",
+      "reorder_qty": 5000,
+      "usage_per_cup": {
+        "딸기 스무디": 180,
+        "아이스 딸기 라떼": 90
+      },
+      "live": {
+        "signal": "strawberry_servings_left",
+        "unit_amount": 180
+      }
+    },
+    "mango": {
+      "name_kr": "냉동 망고",
+      "group": "solid",
+      "unit": "g",
+      "full": 6000,
+      "on_hand": 4700,
+      "danger_below": 1440,
+      "warn_below": 3600,
+      "reorder_label": "1kg 봉지 4개",
+      "reorder_qty": 4000,
+      "usage_per_cup": {
+        "망고 스무디": 180
+      }
+    },
+    "blueberry": {
+      "name_kr": "냉동 블루베리",
+      "group": "solid",
+      "unit": "g",
+      "full": 4000,
+      "on_hand": 3400,
+      "danger_below": 1440,
+      "warn_below": 3600,
+      "reorder_label": "1kg 봉지 3개",
+      "reorder_qty": 3000,
+      "usage_per_cup": {
+        "블루베리 스무디": 180
+      }
+    },
+    "choco_chip": {
+      "name_kr": "초코칩",
+      "group": "solid",
+      "unit": "g",
+      "full": 2000,
+      "on_hand": 1500,
+      "danger_below": 320,
+      "warn_below": 800,
+      "reorder_label": "500g 봉지 2개",
+      "reorder_qty": 1000,
+      "usage_per_cup": {
+        "초코칩 프라페": 40
+      }
+    },
+    "yogurt_powder": {
+      "name_kr": "요거트 파우더",
+      "group": "powder",
+      "unit": "g",
+      "full": 3000,
+      "on_hand": 1100,
+      "danger_below": 800,
+      "warn_below": 2000,
+      "reorder_label": "1kg 통 3개",
+      "reorder_qty": 3000,
+      "usage_per_cup": {
+        "딸기 스무디": 100,
+        "망고 스무디": 100,
+        "블루베리 스무디": 100
+      }
+    },
+    "matcha_powder": {
+      "name_kr": "그린티 파우더",
+      "group": "powder",
+      "unit": "g",
+      "full": 2000,
+      "on_hand": 1500,
+      "danger_below": 400,
+      "warn_below": 1000,
+      "reorder_label": "500g 통 4개",
+      "reorder_qty": 2000,
+      "usage_per_cup": {
+        "아이스 그린티 라떼": 50,
+        "그린티 프라페": 50
+      }
+    },
+    "peach_tea_powder": {
+      "name_kr": "복숭아 아이스티 파우더",
+      "group": "powder",
+      "unit": "g",
+      "full": 2500,
+      "on_hand": 1900,
+      "danger_below": 600,
+      "warn_below": 1500,
+      "reorder_label": "1kg 통 2개",
+      "reorder_qty": 2000,
+      "usage_per_cup": {
+        "복숭아 아이스티": 75
+      }
+    },
+    "vanilla_syrup": {
+      "name_kr": "바닐라 시럽",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 3000,
+      "on_hand": 2400,
+      "danger_below": 160,
+      "warn_below": 400,
+      "reorder_label": "750ml 병 4개",
+      "reorder_qty": 3000,
+      "usage_per_cup": {
+        "아이스 바닐라 라떼": 20,
+        "아이스 카라멜 마키아토": 20,
+        "딸기 스무디": 10
+      }
+    },
+    "choco_sauce": {
+      "name_kr": "초콜릿 소스",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 3000,
+      "on_hand": 2500,
+      "danger_below": 320,
+      "warn_below": 800,
+      "reorder_label": "2L 통 1개",
+      "reorder_qty": 2000,
+      "usage_per_cup": {
+        "아이스 초콜릿": 40,
+        "핫초코": 40,
+        "초코칩 프라페": 35,
+        "아이스 카페 모카": 30
+      }
+    },
+    "caramel_sauce": {
+      "name_kr": "카라멜 소스",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 1500,
+      "on_hand": 100,
+      "danger_below": 120,
+      "warn_below": 300,
+      "reorder_label": "2L 통 1개",
+      "reorder_qty": 2000,
+      "usage_per_cup": {
+        "아이스 카라멜 마키아토": 15
+      }
+    },
+    "cold_brew": {
+      "name_kr": "콜드브루 원액",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 6000,
+      "on_hand": 1500,
+      "danger_below": 960,
+      "warn_below": 2400,
+      "reorder_label": "1L 병 5개",
+      "reorder_qty": 5000,
+      "usage_per_cup": {
+        "콜드브루": 120
+      }
+    },
+    "lemon_base": {
+      "name_kr": "레몬 베이스",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 2000,
+      "on_hand": 1500,
+      "danger_below": 320,
+      "warn_below": 800,
+      "reorder_label": "1L 병 2개",
+      "reorder_qty": 2000,
+      "usage_per_cup": {
+        "레몬에이드": 40
+      }
+    },
+    "grapefruit_base": {
+      "name_kr": "자몽 과육 베이스",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 2000,
+      "on_hand": 1600,
+      "danger_below": 480,
+      "warn_below": 1200,
+      "reorder_label": "1L 병 2개",
+      "reorder_qty": 2000,
+      "usage_per_cup": {
+        "자몽에이드": 60
+      }
+    },
+    "soda": {
+      "name_kr": "탄산수",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 20000,
+      "on_hand": 15000,
+      "danger_below": 1760,
+      "warn_below": 4400,
+      "reorder_label": "500ml 병 24개",
+      "reorder_qty": 12000,
+      "usage_per_cup": {
+        "레몬에이드": 220,
+        "자몽에이드": 200
+      }
+    },
+    "orange_juice": {
+      "name_kr": "오렌지 주스",
+      "group": "liquid",
+      "unit": "ml",
+      "full": 10000,
+      "on_hand": 8000,
+      "danger_below": 2000,
+      "warn_below": 5000,
+      "reorder_label": "1L 팩 6개",
+      "reorder_qty": 6000,
+      "usage_per_cup": {
+        "오렌지 주스": 250
+      }
+    },
+    "yuja": {
+      "name_kr": "유자청",
+      "group": "solid",
+      "unit": "g",
+      "full": 2000,
+      "on_hand": 1700,
+      "danger_below": 320,
+      "warn_below": 800,
+      "reorder_label": "1kg 병 2개",
+      "reorder_qty": 2000,
+      "usage_per_cup": {
+        "유자차(핫)": 40,
+        "아이스 유자차": 40
+      }
+    },
+    "cream": {
+      "name_kr": "수제 크림",
+      "group": "solid",
+      "unit": "g",
+      "full": 1500,
+      "on_hand": 1200,
+      "danger_below": 480,
+      "warn_below": 1200,
+      "reorder_label": "500g 통 3개",
+      "reorder_qty": 1500,
+      "usage_per_cup": {
+        "아인슈페너": 60
+      }
+    },
+    "whipping_cream": {
+      "name_kr": "휘핑크림",
+      "group": "count",
+      "unit": "serving",
+      "full": 100,
+      "on_hand": 6,
+      "danger_below": 8,
+      "warn_below": 20,
+      "reorder_label": "휘핑 스프레이 10개 (1개=10회분)",
+      "reorder_qty": 100,
+      "usage_per_cup": {
+        "아이스 카페 모카": 1,
+        "초코칩 프라페": 1,
+        "그린티 프라페": 1,
+        "핫초코": 1
+      }
+    },
+    "ice_cream_vanilla": {
+      "name_kr": "바닐라 아이스크림",
+      "group": "solid",
+      "unit": "g",
+      "full": 6000,
+      "on_hand": 4800,
+      "danger_below": 640,
+      "warn_below": 1600,
+      "reorder_label": "2.5L 통 2개",
+      "reorder_qty": 4000,
+      "usage_per_cup": {
+        "바닐라 아이스크림": 80,
+        "아포가토": 80
+      }
+    },
+    "ice_cream_choco": {
+      "name_kr": "초코 아이스크림",
+      "group": "solid",
+      "unit": "g",
+      "full": 6000,
+      "on_hand": 4800,
+      "danger_below": 640,
+      "warn_below": 1600,
+      "reorder_label": "2.5L 통 2개",
+      "reorder_qty": 4000,
+      "usage_per_cup": {
+        "초코 아이스크림": 80
+      }
+    },
+    "teabag_chamomile": {
+      "name_kr": "캐모마일 티백",
+      "group": "count",
+      "unit": "ea",
+      "full": 100,
+      "on_hand": 80,
+      "danger_below": 8,
+      "warn_below": 20,
+      "reorder_label": "티백 100개 1박스",
+      "reorder_qty": 100,
+      "usage_per_cup": {
+        "캐모마일 티(핫)": 1,
+        "아이스 캐모마일 티": 1
+      }
+    },
+    "teabag_earl_grey": {
+      "name_kr": "얼그레이 티백",
+      "group": "count",
+      "unit": "ea",
+      "full": 100,
+      "on_hand": 14,
+      "danger_below": 8,
+      "warn_below": 20,
+      "reorder_label": "티백 100개 1박스",
+      "reorder_qty": 100,
+      "usage_per_cup": {
+        "얼그레이 티(핫)": 1,
+        "아이스 얼그레이 티": 1
+      }
+    },
+    "teabag_peppermint": {
+      "name_kr": "페퍼민트 티백",
+      "group": "count",
+      "unit": "ea",
+      "full": 100,
+      "on_hand": 80,
+      "danger_below": 8,
+      "warn_below": 20,
+      "reorder_label": "티백 100개 1박스",
+      "reorder_qty": 100,
+      "usage_per_cup": {
+        "페퍼민트 티(핫)": 1
+      }
+    },
+    "lemon_slice": {
+      "name_kr": "레몬 슬라이스",
+      "group": "count",
+      "unit": "ea",
+      "full": 60,
+      "on_hand": 50,
+      "danger_below": 16,
+      "warn_below": 40,
+      "reorder_label": "레몬 20개 (슬라이스 60개)",
+      "reorder_qty": 60,
+      "usage_per_cup": {
+        "레몬에이드": 2
+      }
+    },
+    "grapefruit_slice": {
+      "name_kr": "자몽 슬라이스",
+      "group": "count",
+      "unit": "ea",
+      "full": 40,
+      "on_hand": 30,
+      "danger_below": 8,
+      "warn_below": 20,
+      "reorder_label": "자몽 10개 (슬라이스 40개)",
+      "reorder_qty": 40,
+      "usage_per_cup": {
+        "자몽에이드": 1
+      }
+    },
+    "cup": {
+      "name_kr": "컵",
+      "group": "count",
+      "unit": "ea",
+      "full": 1000,
+      "on_hand": 800,
+      "danger_below": 80,
+      "warn_below": 200,
+      "reorder_label": "컵 1000개 1박스",
+      "reorder_qty": 1000,
+      "usage_per_cup": {
+        "아이스 아메리카노": 1,
+        "따뜻한 아메리카노": 1,
+        "카페 라떼": 1,
+        "아이스 카페 라떼": 1,
+        "카푸치노": 1,
+        "아이스 바닐라 라떼": 1,
+        "아이스 카라멜 마키아토": 1,
+        "아이스 카페 모카": 1,
+        "콜드브루": 1,
+        "아이스 그린티 라떼": 1,
+        "아이스 초콜릿": 1,
+        "아이스 딸기 라떼": 1,
+        "복숭아 아이스티": 1,
+        "레몬에이드": 1,
+        "자몽에이드": 1,
+        "딸기 스무디": 1,
+        "망고 스무디": 1,
+        "초코칩 프라페": 1,
+        "그린티 프라페": 1,
+        "바닐라 아이스크림": 1,
+        "초코 아이스크림": 1,
+        "캐모마일 티(핫)": 1,
+        "얼그레이 티(핫)": 1,
+        "페퍼민트 티(핫)": 1,
+        "유자차(핫)": 1,
+        "오렌지 주스": 1,
+        "에스프레소": 1,
+        "아포가토": 1,
+        "핫초코": 1,
+        "플랫 화이트": 1,
+        "아인슈페너": 1,
+        "블루베리 스무디": 1,
+        "아이스 얼그레이 티": 1,
+        "아이스 캐모마일 티": 1,
+        "아이스 유자차": 1
+      }
+    }
+  }
+}
