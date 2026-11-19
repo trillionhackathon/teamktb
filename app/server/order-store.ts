@@ -335,6 +335,21 @@ export class OrderStore {
     return result;
   }
 
+  // 재고 저장소(SQLite)의 현재 재고로 주문 받을 수 있는 원두 샷과 딸기 인분을 다시 계산한다.
+  // 보드와 대기열에 남은 주문이 쓸 양은 미리 뺀다. 값이 같으면 아무것도 하지 않는다.
+  syncStock(onHand: { espresso_shot: number; strawberry_servings: number }): void {
+    const active = this.state.board.flatMap((id) => this.state.orders.get(id)?.menu_items ?? []);
+    const reserved = stockNeeded(this.deps.catalog, active);
+    const next = {
+      coffee_beans_shots_left: Math.max(0, Math.floor(onHand.espresso_shot - reserved.espresso_shot)),
+      strawberry_servings_left: Math.max(0, Math.round((onHand.strawberry_servings - reserved.strawberry_servings) * 100) / 100),
+    };
+    const { inventory } = this.state.signals;
+    if (inventory.coffee_beans_shots_left === next.coffee_beans_shots_left && inventory.strawberry_servings_left === next.strawberry_servings_left) return;
+    Object.assign(inventory, next);
+    this.commit({ decide: false });
+  }
+
   private patchSignals(patch: SignalPatch): void {
     if (patch.inventory) Object.assign(this.state.signals.inventory, patch.inventory);
     for (const [orderId, status] of Object.entries(patch.rider_status ?? {})) {

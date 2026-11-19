@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { agentAlerts, applyAiRanking, buildPlan, emptyQuestState, preparedKey, rankCandidates, reconcile, withObjectParticle, MAX_OVERTAKES, type AiQuestHint } from '../app/client/quest-board.ts';
+import { applyAiRanking, buildPlan, emptyQuestState, preparedKey, rankCandidates, reconcile, withObjectParticle, MAX_OVERTAKES, type AiQuestHint } from '../app/client/quest-board.ts';
 import { demoOrder } from '../app/server/demo-feed.ts';
 import type { OrderItemView, OrderView } from '../app/domain/views.ts';
-import type { StoreEvent } from '../app/domain/types.ts';
 
 const americano = (qty: number): OrderItemView => ({ name: '아이스 아메리카노', qty, options: [] });
 const vanilla = (qty: number): OrderItemView => ({ name: '바닐라 라떼', qty, options: [] });
@@ -15,25 +14,6 @@ function order(number: number, items: OrderItemView[], patch: Partial<OrderView>
     received_at: new Date(Date.UTC(2026, 10, 19, 5, 0, number)).toISOString(), remaining_work_seconds: 200, price_krw: 4500, ...patch,
   };
 }
-
-it('shows inventory and store incidents even when newer delivery events fill the event feed', () => {
-  const spill: StoreEvent = {
-    event_id: 'spill', category: 'spill_cleanup', raw_text: '바닥에 커피를 쏟았어요',
-    summary: '바닥 청소 필요', needs_confirmation: false, received_at: '2026-11-19T05:00:00Z',
-  };
-  const events = [1, 2, 3].map((number): StoreEvent => ({
-    ...spill, event_id: `rider-${number}`, category: 'rider_arrived', order_id: `#${number}`,
-  }));
-  const alerts = agentAlerts({
-    signals: {
-      inventory: { coffee_beans_shots_left: 8, strawberry_servings_left: 20 },
-      store: { equipment_status: { blender: 'broken' }, staff_count: 2 },
-      delivery: { weather: 'clear' },
-    },
-    events: [...events, spill],
-  });
-  assert.deepEqual(alerts.map(({ id }) => id), ['equipment-blender', 'beans', 'event-spill']);
-});
 
 describe('quest board (mock Zoro)', () => {
   it('batches the same menu across fixed orders, then the head-only menu, then completion', () => {

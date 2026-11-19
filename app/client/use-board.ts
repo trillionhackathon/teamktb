@@ -27,9 +27,11 @@ export function useBoardSnapshot(initial: BoardSnapshot | null): { snapshot: Boa
 }
 
 // 경과 시간 표시용 시계. 서버 시각과의 차이를 보정한다.
-export function useNow(clockOffset: number, intervalMs = 5000): number {
-  const [now, setNow] = useState(() => Date.now());
+// initialNow(서버 스냅샷 시각)를 주면 첫 렌더가 서버 렌더와 같아져 hydration 불일치가 나지 않는다.
+export function useNow(clockOffset: number, intervalMs = 5000, initialNow?: number): number {
+  const [now, setNow] = useState(() => initialNow ?? Date.now());
   useEffect(() => {
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
     return () => window.clearInterval(timer);
   }, [intervalMs]);

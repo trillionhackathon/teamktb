@@ -98,14 +98,18 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .section-heading h2 { font-size: 22px; font-weight: 760; letter-spacing: -.04em; }
 .section-meta { color: var(--muted); font-size: 15px; font-weight: 600; white-space: nowrap; }
-.agent-panel { min-width: 0; padding: 20px 18px 28px; border-inline-end: 1px solid var(--line); background: var(--surface); }
+.agent-panel { position: sticky; top: 0; display: flex; flex-direction: column; align-self: start; min-width: 0; height: 100vh; padding: 20px 18px 20px; overflow: hidden; border-inline-end: 1px solid var(--line); background: var(--surface); }
 .agent-identity { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .agent-identity h2 { font-size: 21px; font-weight: 760; letter-spacing: -.04em; }
 .agent-identity p { margin-top: 3px; color: var(--muted); font-size: 13px; }
 .wizard-avatar { flex: 0 0 84px; padding: 0; border: 0; border-radius: 50%; background: transparent; }
 .wizard-avatar:hover { background: var(--soft); }
 .wizard-avatar > span { display: block; width: 100%; aspect-ratio: 1; }
-.agent-list { display: grid; gap: 12px; margin: 0; padding: 0 0 0 8px; list-style: none; }
+/* 대화는 이 칸 안에서만 스크롤된다. 메시지 4개 정도가 보이는 높이이고, 새 메시지는 맨 아래에 붙는다. */
+.agent-list { display: flex; flex: 0 0 auto; flex-direction: column; gap: 12px; min-height: 120px; max-height: min(452px, 40vh); margin: 0; padding: 4px 4px 4px 8px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
+.agent-list > li { flex-shrink: 0; }
+.agent-message.resolved { opacity: .5; }
+.agent-summary { flex-shrink: 0; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; background: #eef4fb; color: var(--text); font-size: 14px; font-weight: 600; line-height: 1.45; }
 .agent-message { position: relative; padding: 14px 15px; border-radius: 4px 15px 15px; background: var(--soft); overflow-wrap: anywhere; }
 .agent-message::before { position: absolute; inset: 0 auto auto -7px; width: 10px; height: 10px; background: inherit; clip-path: polygon(0 0, 100% 0, 100% 100%); content: ""; }
 .agent-message p { font-size: 16px; font-weight: 640; line-height: 1.5; }
@@ -196,7 +200,8 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 }
 @media (max-width: 720px) {
   .quest-layout { grid-template-columns: minmax(0, 1fr); }
-  .agent-panel { border-inline-end: 0; border-bottom: 1px solid var(--line); }
+  .agent-panel { position: static; height: auto; border-inline-end: 0; border-bottom: 1px solid var(--line); }
+  .stock-list ul { max-height: 360px; }
   .quest-topbar .topbar-inner { gap: 8px 16px; flex-wrap: wrap; padding-block: 8px; }
   .quest-topbar .topbar-meta { flex-wrap: wrap; gap: 6px 10px; }
   .agent-identity { margin-bottom: 8px; }
@@ -225,3 +230,31 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .ai-status.ai-connected::before { background: #1f9d55; }
 .ai-status.ai-unavailable { color: var(--event-ink); }
 .ai-status.ai-unavailable::before { background: var(--event-ink); }
+
+.agent-action { margin-left: auto; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 680; }
+.agent-action:hover { background: var(--soft); }
+.agent-action:disabled { color: var(--muted); }
+.stock-list { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 180px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.stock-list h3 { display: flex; flex-shrink: 0; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 15px; font-weight: 720; }
+.stock-list h3 span { color: var(--muted); font-size: 12px; font-weight: 500; }
+/* 재고 목록은 이 칸 안에서만 스크롤된다. */
+.stock-list ul { display: grid; flex: 1 1 auto; align-content: start; gap: 10px; min-height: 0; margin: 0; padding: 0 4px 4px 0; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
+.stock-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 4px 8px; padding: 8px 10px; border-radius: 10px; background: var(--soft); font-size: 14px; }
+.stock-row.status-ok { background: transparent; padding-block: 4px; }
+.stock-name { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.stock-status { padding: 0 6px; border-radius: 5px; background: #e4f4e9; color: #246140; font-size: 11px; font-weight: 720; white-space: nowrap; }
+.stock-amount { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stock-bar { grid-column: 1 / -1; height: 6px; overflow: hidden; border-radius: 999px; background: #e6e9ee; }
+.stock-bar > span { display: block; height: 100%; border-radius: inherit; background: #1f9d55; }
+.stock-note { display: flex; grid-column: 1 / -1; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.stock-row.level-warn .stock-bar > span, .stock-row.status-soon .stock-bar > span, .stock-row.status-board_danger .stock-bar > span { background: #e0a100; }
+.stock-row.level-danger .stock-bar > span, .stock-row.status-short .stock-bar > span { background: #d23c45; }
+.stock-row.status-warn .stock-status, .stock-row.status-soon .stock-status, .stock-row.status-board_danger .stock-status { background: #fff1c7; color: #8a5a00; }
+.stock-row.status-danger .stock-status, .stock-row.status-short .stock-status { background: var(--event-surface); color: var(--event-ink); }
+.stock-row.status-short, .stock-row.status-danger { background: #fff6f6; }
+.stock-row.level-danger .stock-amount { color: var(--event-ink); font-weight: 680; }
+
+.stock-usage { display: flex; grid-column: 1 / -1; flex-wrap: wrap; gap: 2px 14px; margin: 0; font-size: 13px; }
+.stock-usage > div { display: flex; align-items: baseline; gap: 5px; }
+.stock-usage dt { color: var(--muted); font-size: 12px; }
+.stock-usage dd { margin: 0; font-weight: 680; font-variant-numeric: tabular-nums; }
