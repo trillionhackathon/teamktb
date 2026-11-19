@@ -1,0 +1,14 @@
+{"seq":13,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:46.758Z","step":"observe","by":"code","text":"시나리오 SC-W 시작: 메뉴별 제조 완료 (보드 4건)"}
+{"seq":14,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:46.758Z","step":"observe","by":"code","order_id":"#126","text":"시작 보드 #126: 카페 라떼 1잔 · 매장"}
+{"seq":15,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:46.758Z","step":"observe","by":"code","order_id":"#128","text":"시작 보드 #128: 카페 라떼 1잔 · 포장"}
+{"seq":16,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:46.758Z","step":"observe","by":"code","order_id":"#129","text":"시작 보드 #129: 아이스 아메리카노 1잔, 딸기 스무디 1잔 · 포장"}
+{"seq":17,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:46.758Z","step":"observe","by":"code","order_id":"#130","text":"시작 보드 #130: 딸기 스무디 1잔 · 매장"}
+{"seq":18,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:46.759Z","step":"observe","by":"code","text":"위 4칸 #126 · #128 · #129 · #130 · 1번 기준 #126 → 같이 만들 주문을 판단"}
+{"seq":19,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:47.017Z","step":"decide","by":"zoro","order_id":"#126","ms":5.60950000000048,"data":{"endpoint":"/ai/group-orders","anchor":"#126","scores":{"#128":1,"#129":0.578,"#130":0.031},"groups":{"#126":1,"#128":1,"#129":1},"matched_menus":{"#128":["latte"],"#129":["iced_americano"]},"threshold":0.5},"text":"1번 #126 카페 라떼 1잔 · 매장 기준 같이 만들기 점수: #128 1(같은 메뉴라 묻지 않음) · #129 0.58 · #130 0.03 (기준 0.5)"}
+{"seq":20,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:47.017Z","step":"act","by":"agent","order_id":"#126","text":"#128(카페 라떼), #129(아이스 아메리카노)를 1번 #126과 같은 작업으로 묶음 · #130은 따로 만듦"}
+{"seq":21,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:47.899Z","step":"observe","by":"staff","text":"알바가 작업 \"카페 라떼 2잔 · 아이스 아메리카노 1잔 만들기\" 제조 완료 → #126, #128, #129의 그 메뉴 줄에 가로선"}
+{"seq":22,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:47.900Z","step":"observe","by":"staff","order_id":"#126","text":"알바가 #126 완료"}
+{"seq":23,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:47.900Z","step":"act","by":"agent","text":"위 4칸을 들어온 순서대로 다시 채움: #128 · #129 · #130"}
+{"seq":24,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:47.901Z","step":"observe","by":"code","text":"1번 기준이 #126에서 #128로 바뀜 · #126이 위 4칸에서 빠짐 → 1번 기준 묶기를 다시 판단"}
+{"seq":25,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:48.160Z","step":"decide","by":"zoro","order_id":"#128","ms":6.694400000000314,"data":{"endpoint":"/ai/group-orders","anchor":"#128","scores":{"#129":0.578,"#130":0.031},"groups":{"#128":1,"#129":1},"matched_menus":{"#129":["iced_americano"]},"threshold":0.5},"text":"1번 #128 카페 라떼 1잔 · 포장 기준 같이 만들기 점수: #129 0.58 · #130 0.03 (기준 0.5)"}
+{"seq":26,"run":2,"scenario":"SC-W","at":"2026-11-19T23:19:48.160Z","step":"act","by":"agent","order_id":"#128","text":"#129(아이스 아메리카노)를 1번 #128과 같은 작업으로 묶음 · #130은 따로 만듦"}

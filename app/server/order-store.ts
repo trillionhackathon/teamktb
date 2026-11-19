@@ -19,8 +19,11 @@ import type {
 } from '../domain/types.ts';
 import { channelLabels, riderLabels, sourceLabels, type BoardSnapshot, type OrderView } from '../domain/views.ts';
 import { buildWorkWindow } from '../domain/work-window.ts';
-import { applyNoteAnswers, noteHoldReason, noteLabel, noteRequest, noteSentences, plainSentences, removeNoteOption, unreadSentences } from '../domain/note.ts';
+import { applyNoteAnswers, noteHoldReason, noteLabel, noteRequest, noteSentences, noteThresholds, plainSentences, removeNoteOption, unreadSentences } from '../domain/note.ts';
+import type { AiNoteAnswer } from '../ai/contract.ts';
+import type { NoteKind, NoteSentence } from '../domain/types.ts';
 import type { AiClient } from './aiserver.ts';
+import { RunLog, josa, withRo, type RunLogEntry, type RunLogInput } from './run-log.ts';
 
 // 주문·보드·매장 상태의 단일 저장소. 키오스크·배달·대시보드는 모두 이 저장소를 API로 바꾸고, 바뀔 때마다 스냅샷을 구독자에게 보낸다.
 // 저장 위치는 Next.js 서버 메모리다. 서버를 다시 띄우면 기본 시나리오로 돌아간다.
@@ -76,6 +79,9 @@ const equipmentLabels: Record<string, string> = { blender: '블렌더', espresso
 const taskKeywords: Record<string, string> = { espresso_machine: '샷 추출', steam_wand: '우유 스팀', ice_dispenser: '얼음 준비', blender: '블렌딩', hot_water: '온수 준비', ice_cream_freezer: '아이스크림 준비', refrigerator: '냉장 재료 준비', juice_dispenser: '주스 준비' };
 // aiserver app/review.py GROUP_THRESHOLD와 같은 값. 화면에서 Zoro 점수를 읽는 기준으로만 쓴다.
 const groupThreshold = 0.5;
+// 실행 로그용
+type ReviewPart = { menus: string; hold: boolean };
+const noteKindLabels: Record<NoteKind, string> = { recipe: '만드는 법', packing: '포장', confirm: '확인 필요', delivery: '배달 기사 몫', other: '그 밖의 말' };
 
 function defaultSignals(): Signals {
   return {
@@ -100,6 +106,10 @@ export class OrderStore {
   private reviewPending: Promise<void> = Promise.resolve();
   private reviewSeq = 0;
   private lastReviewKey = '';
+  // 실행 로그용: 마지막으로 물은 위 4칸(무엇이 바뀌어 다시 묻는지 적는다)과 8번 빠른 주문 칸 상태
+  private lastReviewTop: { anchor?: string; parts: Map<string, ReviewPart> } = { parts: new Map() };
+  private lastQuickKey = '';
+  private readonly runLog: RunLog;
   // 확인 중인 4번 고르기의 후보. Zoro 답보다 다음 완료가 먼저 오면 룰 선택으로 확정하며 밀린 횟수를 센다.
   private pickCandidates: string[] = [];
   private readonly now: () => number;
@@ -110,7 +120,17 @@ export class OrderStore {
     this.deps = deps;
     this.now = deps.now ?? Date.now;
     this.rules = deps.ownerRules ?? defaultOwnerRules;
+    this.runLog = new RunLog(this.now);
     this.loadScenario(defaultScenarioId);
+  }
+
+  // 에이전트 실행 로그(본 것 → 판단 → 행동). run을 주면 그 실행, scenario만 주면 그 시나리오의 마지막 실행, 없으면 지금 실행.
+  runLogEntries(filter: { run?: number; scenario?: string } = {}): RunLogEntry[] {
+    return this.runLog.list(filter);
+  }
+
+  private log(entry: RunLogInput): void {
+    this.runLog.add(entry);
   }
 
   subscribe(listener: (snapshot: BoardSnapshot) => void): () => void {
@@ -173,8 +193,23 @@ export class OrderStore {
       quickServed: [],
     };
     this.reorderWaiting();
+    this.runLog.start(scenario.id);
+    this.lastReviewTop = { parts: new Map() };
+    this.lastQuickKey = '';
+    this.log({ step: 'observe', by: 'code', text: `시나리오 ${scenario.id} 시작: ${scenario.title} (보드 ${this.state.board.length}건)` });
+    for (const id of this.state.board) this.log({ step: 'observe', by: 'code', order_id: id, text: `시작 보드 ${id}: ${this.orderSummary(this.state.orders.get(id)!)}` });
     this.commit();
     return undefined;
+  }
+
+  // 로그 한 줄에 쓰는 주문 내용. 예: "카페 라떼 2잔(디카페인) · 배달"
+  private orderSummary(order: Order): string {
+    const { catalog } = this.deps;
+    const lines = order.menu_items.map((line) => {
+      const options = optionNames(catalog, line.options);
+      return `${lineName(catalog, line)} ${line.qty}${lineUnit(catalog, line)}${options.length ? `(${options.join(', ')})` : ''}`;
+    });
+    return `${lines.join(', ')} · ${channelLabels[order.channel]}`;
   }
 
   async runTrigger(scenarioId: string, index: number): Promise<StoreError | undefined> {
@@ -243,6 +278,8 @@ export class OrderStore {
     };
     this.state.nextNumber += 1;
     this.state.orders.set(orderId, order);
+    const notes = [order.request_note && `가게 칸 "${order.request_note}"`, order.rider_note && `배달 칸 "${order.rider_note}"`].filter(Boolean);
+    this.log({ step: 'observe', by: 'customer', order_id: orderId, text: `${orderId} 주문 들어옴: ${this.orderSummary(order)}${notes.length ? ` · ${notes.join(' · ')}` : ''}` });
     // 새 주문은 맨 뒤 빈칸에 붙는다. 5~8번은 들어온 순서를 유지하고, 8칸이 차면 화면 밖 대기열로 간다.
     this.state.board.push(orderId);
     this.reorderWaiting();
@@ -270,12 +307,14 @@ export class OrderStore {
       if (this.isPicking() && this.state.board.indexOf(orderId) >= 0 && this.state.board.indexOf(orderId) < this.lockedShown()) this.settlePendingPick();
       order.status = 'done';
       order.completed_at = now;
+      this.log({ step: 'observe', by: 'staff', order_id: orderId, text: order.served_early ? `알바가 8번 빠른 주문 ${josa(orderId, '을', '를')} 먼저 내보냄` : `알바가 ${orderId} 완료` });
       const locked = this.lockedShown();
       const index = this.state.board.indexOf(orderId);
       if (index >= 0) this.state.board.splice(index, 1);
       this.markWindowDone(orderId);
       // 고정칸(1~4번)이 비면 2~4번이 당겨지고 4번을 새로 고른다. 1번이 아닌 고정 주문이 먼저 끝나도(라이더가 먼저 와서 가져감) 같다.
       if (index >= 0 && index < locked) this.fillSlot4();
+      if (index >= 0 && index < locked && this.deps.config.fifo) this.log({ step: 'act', by: 'agent', text: `위 4칸을 들어온 순서대로 다시 채움: ${this.topIds().join(' · ')}` });
     }
     this.commit();
     return { order: this.view(order) };
@@ -719,6 +758,7 @@ export class OrderStore {
   private commit(options: { decide?: boolean } = {}): void {
     this.state.version += 1;
     this.rebuildWorkWindow();
+    this.logQuickLane();
     this.notify();
     this.scheduleReview();
     if (!this.deps.ai || options.decide === false) return;
@@ -778,12 +818,40 @@ export class OrderStore {
   }
 
   // 맨 앞 4건, 기준 주문, 그리고 각 주문의 옵션과 메모 보류 여부. 메모로 옵션이 붙거나 확인되면 다시 묻는다.
-  private reviewKey(): string {
-    const content = this.topIds().map((id) => {
+  private reviewParts(): Map<string, ReviewPart> {
+    return new Map(this.topIds().map((id) => {
       const order = this.state.orders.get(id)!;
-      return `${id}:${order.menu_items.map((line) => `${line.menu}*${line.qty}+${line.options.join('+')}`).join('/')}${noteHoldReason(order) ? ':hold' : ''}`;
-    });
+      return [id, { menus: order.menu_items.map((line) => `${line.menu}*${line.qty}+${line.options.join('+')}`).join('/'), hold: Boolean(noteHoldReason(order)) }];
+    }));
+  }
+
+  private reviewKey(): string {
+    const content = [...this.reviewParts()].map(([id, { menus, hold }]) => `${id}:${menus}${hold ? ':hold' : ''}`);
     return `${this.anchorId() ?? '-'}|${content.join(',')}`;
+  }
+
+  // 실행 로그: 위 4칸에서 무엇이 바뀌어 묶기를 다시 판단하는지
+  private logReviewTrigger(): void {
+    const anchor = this.anchorId();
+    const parts = this.reviewParts();
+    const before = this.lastReviewTop;
+    this.lastReviewTop = { anchor, parts };
+    const ids = [...parts.keys()];
+    if (!before.parts.size) {
+      this.log({ step: 'observe', by: 'code', text: `위 4칸 ${ids.join(' · ')} · 1번 기준 ${anchor ?? '없음'} → 같이 만들 주문을 판단` });
+      return;
+    }
+    const reasons: string[] = [];
+    if (before.anchor !== anchor) reasons.push(`1번 기준이 ${before.anchor ?? '없음'}에서 ${withRo(anchor ?? '없음')} 바뀜`);
+    for (const id of ids) {
+      const now = parts.get(id)!;
+      const was = before.parts.get(id);
+      if (!was) reasons.push(`${josa(id, '이', '가')} 위 4칸에 들어옴`);
+      else if (was.menus !== now.menus) reasons.push(`${id} 옵션이 바뀜(${this.orderSummary(this.state.orders.get(id)!)})`);
+      else if (was.hold !== now.hold) reasons.push(now.hold ? `${id} 메모 확인을 기다림` : `${id} 메모 확인이 끝남`);
+    }
+    for (const id of before.parts.keys()) if (!parts.has(id)) reasons.push(`${josa(id, '이', '가')} 위 4칸에서 빠짐`);
+    this.log({ step: 'observe', by: 'code', text: `${reasons.join(' · ') || '위 4칸이 바뀜'} → 1번 기준 묶기를 다시 판단` });
   }
 
   // 1번 기준과 2~4번 중 같이 만들 수 있는 후보(만듦·보류·디카페인 같은 옵션 막힘은 코드가 먼저 뺀다)
@@ -802,6 +870,7 @@ export class OrderStore {
     const key = this.reviewKey();
     if (key === this.lastReviewKey) return;
     this.lastReviewKey = key;
+    this.logReviewTrigger();
     if (this.reviewTimer) clearTimeout(this.reviewTimer);
     this.reviewTimer = setTimeout(() => {
       this.reviewTimer = undefined;
@@ -816,17 +885,67 @@ export class OrderStore {
     const key = this.reviewKey();
     const anchor = this.anchorId();
     const request = anchor ? buildGroupRequest(anchor, this.reviewCandidates(anchor), this.state.orders, this.deps.catalog) : undefined;
+    for (const [id, why] of Object.entries(this.excludedFromReview(anchor))) {
+      this.log({ step: 'decide', by: 'code', order_id: id, text: `${id}: ${why} Zoro에 묻지 않고 1번과 따로 만듦` });
+    }
     if (!request || request.orders.length < 2) {
+      if (anchor) this.log({ step: 'act', by: 'agent', order_id: anchor, text: `같이 만들 후보가 없어 1번 ${anchor}만 만듦` });
       this.state.review = { key, ok: true, anchor, groups: {}, scores: {}, matched_menus: {} };
       this.commit({ decide: false });
       return;
     }
+    const started = performance.now();
     const result = await ai.groupOrders(request);
-    if (seq !== this.reviewSeq) return;   // 기다리는 사이 앞 4건이 또 바뀌었다
+    const ms = performance.now() - started;
+    if (seq !== this.reviewSeq) {   // 기다리는 사이 앞 4건이 또 바뀌었다
+      this.log({ step: 'act', by: 'agent', ms, text: '늦게 온 묶기 답은 버림(그사이 위 4칸이 또 바뀜)' });
+      return;
+    }
     if (!result.ok) console.warn(`[order-store] group-orders failed: ${result.error}`);
     const ok = result.ok && !result.data.fallback;
     this.state.review = { key, ok, anchor, groups: ok ? result.data.groups : {}, scores: ok ? result.data.scores : {}, matched_menus: ok ? result.data.matched_menus : {} };
+    this.logReviewResult(anchor!, request.orders.map(({ id }) => id).filter((id) => id !== anchor), result, ms);
     this.commit({ decide: false });
+  }
+
+  // 실행 로그: Zoro 묶기 점수(판단)와 위 4칸에 한 일(행동)
+  private logReviewResult(anchor: string, asked: string[], result: Awaited<ReturnType<AiClient['groupOrders']>>, ms: number): void {
+    const head = `1번 ${anchor} ${this.orderSummary(this.state.orders.get(anchor)!)} 기준`;
+    if (!result.ok || result.data.fallback) {
+      this.log({ step: 'decide', by: 'zoro', order_id: anchor, ms, data: result.ok ? { fallback: true } : { error: result.error }, text: `${head} 묶기: Zoro가 답하지 못함(${result.ok ? 'aiserver 폴백' : result.error})` });
+      this.log({ step: 'act', by: 'agent', order_id: anchor, text: '묶지 않고 하나씩 만들도록 둠' });
+      return;
+    }
+    const { groups, scores, matched_menus: matched } = result.data;
+    // aiserver는 같은 메뉴끼리는 Zoro에 묻지 않고 1을 준다. 그 점수는 Zoro 판단이 아니라고 적는다.
+    const scoreText = asked.map((id) => `${id} ${scores[id] === 1 ? '1(같은 메뉴라 묻지 않음)' : (scores[id] ?? 0).toFixed(2)}`).join(' · ');
+    this.log({ step: 'decide', by: 'zoro', order_id: anchor, ms, data: { endpoint: '/ai/group-orders', anchor, scores, groups, matched_menus: matched, threshold: groupThreshold }, text: `${head} 같이 만들기 점수: ${scoreText} (기준 ${groupThreshold})` });
+    const group = groups[anchor];
+    const together = asked.filter((id) => group !== undefined && groups[id] === group);
+    const apart = asked.filter((id) => !together.includes(id));
+    const menuName = (id: string) => findDrink(this.deps.catalog, id)?.name_kr ?? id;
+    const togetherText = together.map((id) => (matched[id]?.length ? `${id}(${matched[id].map(menuName).join(', ')})` : id));
+    const parts = [
+      together.length ? `${josa(togetherText.join(', '), '을', '를')} 1번 ${josa(anchor, '과', '와')} 같은 작업으로 묶음` : `1번 ${josa(anchor, '과', '와')} 같이 만들 주문 없음`,
+      apart.length ? `${josa(apart.join(', '), '은', '는')} 따로 만듦` : '',
+    ].filter(Boolean);
+    this.log({ step: 'act', by: 'agent', order_id: anchor, text: parts.join(' · ') });
+  }
+
+  // 실행 로그: 8번 빠른 주문 칸(코드 규칙). 띄운 주문이나 "지금 내주세요" 여부가 바뀔 때만 적는다.
+  private logQuickLane(): void {
+    const laneId = this.quickLaneId();
+    if (!laneId) {
+      this.lastQuickKey = '';
+      return;
+    }
+    const lane = this.quickLaneInfo(laneId);
+    const key = `${laneId}:${lane.ready}`;
+    if (key === this.lastQuickKey) return;
+    this.lastQuickKey = key;
+    const idle = lane.idle ? `${lane.idle.order_id} ${lane.idle.label} ${lane.idle.sec}초 동안 손이 빔` : '지금 만드는 주문에 손 비는 단계 없음';
+    this.log({ step: 'decide', by: 'code', order_id: laneId, data: { fifo_position: lane.position, hands_sec: lane.hands, idle: lane.idle }, text: `8번 빠른 주문 후보 ${laneId} ${this.orderSummary(this.state.orders.get(laneId)!)}(원래 ${lane.position}번째) · 내주는 데 ${lane.hands}초 · ${idle}` });
+    this.log({ step: 'act', by: 'agent', order_id: laneId, text: lane.ready ? `8번 칸에 "${laneId} 지금 먼저 내주세요"를 띄움` : `8번 칸에 ${josa(laneId, '을', '를')} 띄우고 손이 빌 때까지 기다림` });
   }
 
   // 지금 보드와 같은 맨 앞 4건으로 물은 답만 쓴다. 다시 묻는 중이면 묶음을 보여 주지 않는다.
@@ -985,6 +1104,8 @@ export class OrderStore {
         const order = this.state.orders.get(order_id)!;
         order.completed_lines = [...new Set([...(order.completed_lines ?? []), line_index])];
       }
+      const ids = [...new Set((task.parts ?? []).map(({ order_id: id }) => id))];
+      this.log({ step: 'observe', by: 'staff', text: `알바가 작업 "${task.text}" 제조 완료 → ${ids.join(', ')}의 그 메뉴 줄에 가로선` });
       this.commit({ decide: false });
       return { ok: true };
     }
@@ -1020,21 +1141,60 @@ export class OrderStore {
   // 판단 1(카드에 반영할까)은 domain/note.ts가 Zoro 확신에 기준선을 대서 정한다. 반영되면 commit에서 1번 묶기를 다시 묻는다(reviewKey).
   private async readNote(ai: AiClient, order: Order): Promise<void> {
     const note = order.note_read!;
-    const result = await ai.readNote(noteRequest(order, note.sentences, this.deps.catalog));
+    const request = noteRequest(order, note.sentences, this.deps.catalog);
+    const started = performance.now();
+    const result = await ai.readNote(request);
+    const ms = performance.now() - started;
     // 기다리는 사이 시나리오를 다시 불러왔으면 같은 번호의 다른 주문이다
     if (this.state.orders.get(order.order_id) !== order || order.note_read !== note) return;
+    const id = order.order_id;
+    const asked = `Zoro에 ${id} 메모 ${note.sentences.length}문장을 물음(라벨: 문장 종류 5개, 이 주문 메뉴의 옵션 ${request.options.length}개 + 목록에 없음/없음)`;
     if (!result.ok || result.data.fallback) {
       if (!result.ok) console.warn(`[order-store] read-note failed: ${result.error}`);
+      this.log({ step: 'decide', by: 'zoro', order_id: id, ms, data: result.ok ? { fallback: true } : { error: result.error }, text: `${asked} → 답하지 못함(${result.ok ? 'aiserver 폴백' : result.error})` });
+      this.log({ step: 'act', by: 'agent', order_id: id, text: `${id} 메모 원문을 ⚠로 띄워 알바에게 넘김` });
       order.note_read = { status: 'unavailable', sentences: unreadSentences(note.sentences) };
     } else if (order.made || order.completed_lines?.length || order.status === 'done') {
       // 답이 오기 전에 이미 만든 잔이 있으면 줄을 나누지 않는다(완료한 줄 번호가 밀린다). 원문 + ⚠로 사람이 본다.
+      this.log({ step: 'decide', by: 'zoro', order_id: id, ms, text: asked });
+      this.log({ step: 'act', by: 'agent', order_id: id, text: `${josa(id, '은', '는')} 이미 만들기 시작해서 카드를 고치지 않고 메모 원문을 ⚠로 띄움` });
       order.note_read = { status: 'unavailable', sentences: unreadSentences(note.sentences, '이미 만들기 시작해서 메모를 직접 확인하세요') };
     } else {
       const read = applyNoteAnswers(order, note.sentences, result.data.sentences, this.deps.catalog);
+      this.log({ step: 'decide', by: 'zoro', order_id: id, ms, data: { endpoint: '/ai/read-note', labels: { options: request.options.map(({ id: option }) => option) } }, text: asked });
+      for (const sentence of read.sentences) {
+        const answer = result.data.sentences.find(({ id: sentenceId }) => sentenceId === sentence.id);
+        if (answer) this.log({ step: 'decide', by: 'zoro', order_id: id, data: { sentence: sentence.text, ...answer }, text: `${id} "${sentence.text}" → ${this.noteAnswerText(answer)}` });
+        this.log({ step: 'act', by: 'agent', order_id: id, data: { sentence: sentence.text, applied: sentence.applied, check: sentence.check, hold: sentence.hold, dismissed: sentence.dismissed }, text: `${id} "${sentence.text}": ${this.noteActText(sentence)}` });
+      }
       order.note_read = { status: 'ready', sentences: read.sentences };
       this.setLines(order, read.lines);
     }
     this.commit({ decide: false });
+  }
+
+  // 실행 로그: 문장 하나에 대한 Zoro 답(가장 높은 종류·옵션과 확률, 일부 잔, 몸 상태)
+  private noteAnswerText(answer: AiNoteAnswer): string {
+    const best = (probabilities: Record<string, number>) => Object.entries(probabilities).reduce((top, entry) => (entry[1] > top[1] ? entry : top), ['', -1]);
+    const [kind, kindP] = best(answer.kind);
+    const [option, optionP] = best(answer.option);
+    const optionName = option === 'none' ? '없음' : option === 'unlisted' ? '목록에 없음' : this.deps.catalog.options[option]?.name_kr ?? option;
+    return `종류 ${noteKindLabels[kind as NoteKind] ?? kind} ${kindP.toFixed(2)} · 옵션 ${optionName} ${optionP.toFixed(2)} · 일부 잔 ${answer.partial.toFixed(2)} · 몸 상태 ${answer.body.toFixed(2)}`;
+  }
+
+  // 실행 로그: 그 답으로 카드에 한 일. 기준선(자동 반영 0.9, 확인 0.7)은 domain/note.ts의 noteThresholds다.
+  private noteActText(sentence: NoteSentence): string {
+    const where = sentence.moved ? '배달 칸에 적힌 가게 일 · ' : '';
+    const confidence = sentence.confidence === undefined ? '' : `확신 ${sentence.confidence.toFixed(2)}`;
+    if (sentence.applied && sentence.option) {
+      const name = this.deps.catalog.options[sentence.option]?.name_kr ?? sentence.option;
+      const auto = (sentence.confidence ?? 0) >= noteThresholds.auto;
+      return `${where}카드에 ${sentence.cups}잔 ${josa(name, '을', '를')} 붙임(${confidence} ${auto ? `≥ 자동 반영 ${noteThresholds.auto}` : `< ${noteThresholds.auto}라 붙이고 확인`})${sentence.check ? ` · ⚠ ${sentence.check}` : ''}`;
+    }
+    if (sentence.dismissed) return `가게 일이 아니라 카드에서 접어 둠(${confidence})`;
+    if (sentence.check) return `${where}카드를 고치지 않고 ⚠ ${sentence.check}${sentence.hold ? ' · 확인 전까지 1번과 같이 만들지 않음' : ''}`;
+    if (sentence.option) return `${where}이미 붙어 있는 옵션이라 그대로 둠(${confidence})`;
+    return `${where}카드에 메모 한 줄로 둠(${confidence})`;
   }
 
   // 메모로 옵션이 바뀌면 시작 전 주문의 남은 일을 다시 센다. 주문 금액은 그대로 둔다(돈 드는 옵션은 결제 확인 ⚠).
@@ -1058,6 +1218,7 @@ export class OrderStore {
       Object.assign(sentence, { applied: false, cups: undefined, check: undefined });
     }
     Object.assign(sentence, { resolved: true, hold: false });
+    this.log({ step: 'observe', by: 'staff', order_id: orderId, text: `알바가 ${orderId} 메모 ${josa(`"${sentence.text}"`, '을', '를')} ${decision === 'confirm' ? '확인함' : '되돌림'}` });
     this.commit({ decide: false });
     return { order: this.view(order) };
   }

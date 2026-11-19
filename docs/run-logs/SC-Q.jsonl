@@ -1,0 +1,27 @@
+{"seq":13,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","text":"시나리오 SC-Q 시작: 1번 기준 같이 만들기 + 손 비는 시간 빠른 주문 (보드 10건)"}
+{"seq":14,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#101","text":"시작 보드 #101: 카페 라떼 1잔 · 매장"}
+{"seq":15,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#102","text":"시작 보드 #102: 아이스 카페 라떼 2잔 · 포장"}
+{"seq":16,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#103","text":"시작 보드 #103: 딸기 스무디 1잔 · 매장"}
+{"seq":17,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#104","text":"시작 보드 #104: 카페 라떼 1잔(디카페인) · 매장"}
+{"seq":18,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#105","text":"시작 보드 #105: 카페 라떼 2잔 · 매장"}
+{"seq":19,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#106","text":"시작 보드 #106: 레몬에이드 2잔 · 배달"}
+{"seq":20,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#107","text":"시작 보드 #107: 콜드브루 1잔 · 포장"}
+{"seq":21,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#108","text":"시작 보드 #108: 바닐라 아이스크림 1개 · 배달"}
+{"seq":22,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#109","text":"시작 보드 #109: 망고 스무디 1잔 · 매장"}
+{"seq":23,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.437Z","step":"observe","by":"code","order_id":"#110","text":"시작 보드 #110: 티라미수 1개 · 포장"}
+{"seq":24,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.438Z","step":"decide","by":"code","order_id":"#110","data":{"fifo_position":10,"hands_sec":18,"idle":{"order_id":"#101","sec":30,"label":"샷 추출"}},"text":"8번 빠른 주문 후보 #110 티라미수 1개 · 포장(원래 10번째) · 내주는 데 18초 · #101 샷 추출 30초 동안 손이 빔"}
+{"seq":25,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.438Z","step":"act","by":"agent","order_id":"#110","text":"8번 칸에 \"#110 지금 먼저 내주세요\"를 띄움"}
+{"seq":26,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.439Z","step":"observe","by":"code","text":"위 4칸 #101 · #102 · #103 · #104 · 1번 기준 #101 → 같이 만들 주문을 판단"}
+{"seq":27,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.689Z","step":"decide","by":"code","order_id":"#104","text":"#104: 디카페인이라 원두를 바꿔야 해서 Zoro에 묻지 않고 1번과 따로 만듦"}
+{"seq":28,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.971Z","step":"decide","by":"zoro","order_id":"#101","ms":282.3675999999996,"data":{"endpoint":"/ai/group-orders","anchor":"#101","scores":{"#102":0.603,"#103":0.031},"groups":{"#101":1,"#102":1},"matched_menus":{"#102":["iced_latte"]},"threshold":0.5},"text":"1번 #101 카페 라떼 1잔 · 매장 기준 같이 만들기 점수: #102 0.60 · #103 0.03 (기준 0.5)"}
+{"seq":29,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:42.972Z","step":"act","by":"agent","order_id":"#101","text":"#102(아이스 카페 라떼)를 1번 #101과 같은 작업으로 묶음 · #103은 따로 만듦"}
+{"seq":30,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:43.908Z","step":"observe","by":"staff","order_id":"#110","text":"알바가 8번 빠른 주문 #110을 먼저 내보냄"}
+{"seq":31,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:44.606Z","step":"observe","by":"customer","order_id":"#111","text":"#111 주문 들어옴: 초코 아이스크림 1개 · 포장"}
+{"seq":32,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:44.607Z","step":"decide","by":"code","order_id":"#111","data":{"fifo_position":10,"hands_sec":20,"idle":{"order_id":"#101","sec":30,"label":"샷 추출"}},"text":"8번 빠른 주문 후보 #111 초코 아이스크림 1개 · 포장(원래 10번째) · 내주는 데 20초 · #101 샷 추출 30초 동안 손이 빔"}
+{"seq":33,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:44.607Z","step":"act","by":"agent","order_id":"#111","text":"8번 칸에 \"#111 지금 먼저 내주세요\"를 띄움"}
+{"seq":34,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:45.311Z","step":"observe","by":"staff","order_id":"#101","text":"알바가 #101 완료"}
+{"seq":35,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:45.314Z","step":"act","by":"agent","text":"위 4칸을 들어온 순서대로 다시 채움: #102 · #103 · #104 · #105"}
+{"seq":36,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:45.315Z","step":"observe","by":"code","text":"1번 기준이 #101에서 #102로 바뀜 · #105가 위 4칸에 들어옴 · #101이 위 4칸에서 빠짐 → 1번 기준 묶기를 다시 판단"}
+{"seq":37,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:45.572Z","step":"decide","by":"code","order_id":"#104","text":"#104: 디카페인이라 원두를 바꿔야 해서 Zoro에 묻지 않고 1번과 따로 만듦"}
+{"seq":38,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:45.890Z","step":"decide","by":"zoro","order_id":"#102","ms":317.9324000000015,"data":{"endpoint":"/ai/group-orders","anchor":"#102","scores":{"#103":0.063,"#105":0.603},"groups":{"#102":1,"#105":1},"matched_menus":{"#105":["latte"]},"threshold":0.5},"text":"1번 #102 아이스 카페 라떼 2잔 · 포장 기준 같이 만들기 점수: #103 0.06 · #105 0.60 (기준 0.5)"}
+{"seq":39,"run":2,"scenario":"SC-Q","at":"2026-11-19T23:19:45.890Z","step":"act","by":"agent","order_id":"#102","text":"#105(카페 라떼)를 1번 #102와 같은 작업으로 묶음 · #103은 따로 만듦"}
