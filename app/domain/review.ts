@@ -1,6 +1,6 @@
 import type { AiGroupMenu, AiGroupRequest } from '../ai/contract.ts';
 import { findDrink, lineName, optionNames, type MenuCatalog } from './menu.ts';
-import type { BoardReview, Order, OrderLine, ReviewGroup } from './types.ts';
+import type { BoardReview, Note, Order, OrderLine, ReviewGroup } from './types.ts';
 
 // 위 4칸 묶기와 아래 일머리 팁 칸에 쓰는 코드. 순서와 잔 수·초 계산은 여기서 하고,
 // Zoro는 1번(기준)과 2~4번이 비슷한지만 판단한다. 팁 문장과 빠른 주문 칸은 코드가 만든다.
@@ -10,6 +10,14 @@ import type { BoardReview, Order, OrderLine, ReviewGroup } from './types.ts';
 
 // 1번 묶음 색. 기준 주문(1번)과 같이 만들 주문이 같은 색이다.
 export const anchorColor = '#ff2e93';
+// 제조 작업(묶이는 메뉴 줄) 색. 어두운 화면 위에서 튀도록 핫핑크(anchorColor)·빠른 주문 칸 노랑과 겹치지 않는 네온 톤만 쓴다.
+export const taskPalette = ['#2dd4ff', '#b14aff', '#22e67a', '#ff8a3d', '#14e0c0'] as const;
+
+export function taskLineColors(notes: Note[]): Record<string, string> {
+  return Object.fromEntries(notes.flatMap((note) => note.kind === 'task' && note.color
+    ? (note.parts ?? []).map(({ order_id, line_index }) => [`${order_id}:${line_index}`, note.color!])
+    : []));
+}
 
 // 같이 만들 수 있는 줄만 메뉴로 보낸다. 같은 메뉴가 여러 줄이면 한 번만 보낸다.
 export function groupMenus(order: Order, catalog: MenuCatalog): AiGroupMenu[] {

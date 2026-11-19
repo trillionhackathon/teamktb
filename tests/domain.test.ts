@@ -5,6 +5,7 @@ import { menuCatalog, ownerRules } from '../app/domain/catalog-data.ts';
 import { interpretEvent, parseEtaSeconds } from '../app/domain/events.ts';
 import { buildFacts, lockedLine } from '../app/domain/facts.ts';
 import { normalizeLine, orderPrice, orderWorkSeconds, stockNeeded, toggleOption } from '../app/domain/menu.ts';
+import { taskLineColors } from '../app/domain/review.ts';
 import { findScenario, sharedBoardOrders } from '../app/domain/scenarios.ts';
 import type { Order, OrderLine } from '../app/domain/types.ts';
 import { buildWorkWindow } from '../app/domain/work-window.ts';
@@ -28,6 +29,16 @@ function order(id: string, patch: Partial<Order> = {}, agoSeconds = 60): Order {
 }
 
 const ctx = (orders: Order[]) => ({ orders: new Map(orders.map((o) => [o.order_id, o])), catalog: menuCatalog, limits, now });
+
+describe('manufacturing task colors', () => {
+  it('maps each task color only to its included order menu lines', () => {
+    assert.deepEqual(taskLineColors([
+      { id: 'task:latte', kind: 'task', text: '라떼 2잔', order_ids: ['#126', '#128'], color: '#2563eb', parts: [{ order_id: '#126', line_index: 0, qty: 1 }, { order_id: '#128', line_index: 0, qty: 1 }] },
+      { id: 'task:americano', kind: 'task', text: '아메리카노 1잔', order_ids: ['#129'], color: '#d97706', parts: [{ order_id: '#129', line_index: 0, qty: 1 }] },
+      { id: 'quick:#130', kind: 'quick', text: '먼저 내기', order_ids: ['#130'], color: '#000', parts: [{ order_id: '#130', line_index: 0, qty: 1 }] },
+    ]), { '#126:0': '#2563eb', '#128:0': '#2563eb', '#129:0': '#d97706' });
+  });
+});
 
 describe('menu catalog (data/recipe.json + data/cafe_db.json)', () => {
   it('uses cafe_db remaining_work_formula: 아아 3잔 153초, 딸기스무디 2잔 199초', () => {

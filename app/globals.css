@@ -282,12 +282,13 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 /* 비슷한 계열(Zoro가 레시피로 만든 data/menu_groups.json): 같은 계열은 같은 색 */
 .work-linked { border-left: 4px solid transparent; padding-left: 8px; }
 
-/* Zoro 묶음: 같은 색 위쪽 띠와 이름표. 칸 번호 없이 한 페이지에 보인다. */
+/* 제조 작업 색: 같은 작업 블록과 주문서 메뉴 줄에 같은 표시선을 쓴다. */
 .page-grid { grid-template-rows: repeat(2, auto); }
-.quest-card.grouped { border-color: var(--group); background: color-mix(in srgb, var(--group) 7%, var(--surface)); }
+.item-task { position: relative; padding-left: 11px; }
+.item-task::before { position: absolute; inset: 2px auto 2px 0; width: 4px; border-radius: 999px; background: var(--task-color); content: ""; }
 
 .card-wait .group-tag { margin-left: 8px; }
-.group-tag { padding: 1px 8px; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 740; white-space: nowrap; }
+.group-tag { padding: 1px 8px; border-radius: 999px; background: #e6e9ee; color: var(--text); font-size: 12px; font-weight: 740; white-space: nowrap; }
 .group-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
 .group-legend li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid; border-radius: 999px; background: var(--surface); font-size: 14px; font-weight: 700; }
 .group-legend li i { width: 10px; height: 10px; border-radius: 50%; }
@@ -296,7 +297,14 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 /* 아래 일머리 팁: 장식 없이 문장과 작은 버튼만 둔다 */
 .notice-section { min-width: 0; padding: 18px clamp(16px, 2.3vw, 36px) 22px; background: #f7f8fb; }
 .note-list { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; }
-.note-card { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; }
+.note-card { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.task-card { border-color: var(--task-color); box-shadow: inset 4px 0 var(--task-color); }
+.task-card.is-next { background: color-mix(in srgb, var(--task-color) 6%, var(--surface)); }
+.task-next { display: inline-block; margin-bottom: 6px; color: #247b47; font-size: 13px; font-weight: 800; }
+.task-card.is-done { background: #f2f5f2; }
+.task-parts { margin-top: 6px !important; font-weight: 650; }
+.task-done { color: #247b47; font-weight: 750; }
+.note-status { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
 .note-body { flex: 1 1 320px; min-width: 0; }
 .note-card p { margin: 0; line-height: 1.55; }
 .note-card .note-text { font-size: 17px; font-weight: 700; }
@@ -306,7 +314,7 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .note-button:hover { background: #dcdfe5; }
 .note-button:disabled { color: var(--muted); cursor: default; }
 /* 처리한 주문(만듦)은 메뉴 이름에 삭선을 긋는다. 주문 자체는 완료 버튼을 눌러야 사라진다. */
-.quest-card.is-made .item-name, .quest-card.is-made .item-qty { text-decoration: line-through; color: var(--muted); }
+.quest-card.is-made .item-name, .quest-card.is-made .item-qty, .item-made .item-name, .item-made .item-qty, .item-made .item-options { text-decoration: line-through; color: var(--muted); }
 
 /* 8번 빠른 주문 칸: 디저트 전용(코드 규칙). 손 비는 시간이 맞으면 is-ready로 진하게 띄운다. */
 .quest-card.quick-lane { height: 190px; border-color: #ecd9a8; background: #fffbf2; }

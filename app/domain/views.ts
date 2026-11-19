@@ -1,7 +1,7 @@
 import type { BoardReview, MenuGroup, Note, Channel, Decision, OrderSource, OrderStatus, QuickLane, RiderStatus, Signals, Slot4Info, StoreEvent, Tip, WorkStep } from './types.ts';
 
 // 서버가 화면으로 보내는 스냅샷. 화면은 메뉴 원본(recipe.json) 없이 이 값만으로 그린다.
-export type OrderItemView = { name: string; qty: number; unit: string; options: string[]; group?: MenuGroup };
+export type OrderItemView = { name: string; qty: number; unit: string; options: string[]; group?: MenuGroup; made?: boolean };
 
 export type OrderView = {
   order_id: string;

@@ -32,6 +32,7 @@ export type Order = {
   overtaken?: number;
   // 작업창에서 미리 만들어 둔 주문(앞 주문 완료 때 같이 만든 잔). 남은 일은 포장뿐이다.
   made?: boolean;
+  completed_lines?: number[];
   // 스무디 재료만 준비해 둔 주문. 갈기는 1~2번이 됐을 때 한다.
   prepped?: boolean;
   // 라이더·픽업 도착 시각. pickup_eta_seconds("지금부터 몇 초 뒤")를 받는 순간 now + 초로 바꿔 저장한다.
@@ -79,7 +80,7 @@ export type BoardReview = {
 // 문장은 쉬운 말로 쓴다. text: 할 일, detail: 왜(같이 만드는 이유, 손이 비는 단계), reason: 따로 만드는 주문이나 먼저 내는 이유, zoro: Zoro 점수(작은 글씨).
 // head: 1번 주문과 같이 만들 2~4번. 카드의 완료 버튼은 위 1번의 완료 버튼과 같은 동작이다.
 // quick: 8번 빠른 주문 칸의 디저트. 1번 레시피에 손이 비는 단계가 있으면 지금 먼저 내라고 알린다(ready). 누르면 그 주문이 완료된다.
-export type Note = { id: string; kind: 'head' | 'quick'; text: string; detail?: string; reason?: string; zoro?: string; order_ids: string[]; color?: string; ready?: boolean };
+export type Note = { id: string; kind: 'head' | 'task' | 'quick'; text: string; detail?: string; reason?: string; zoro?: string; order_ids: string[]; color?: string; ready?: boolean; done?: boolean; unit?: string; parts?: { order_id: string; line_index: number; qty: number }[] };
 
 // 8번 빠른 주문 칸. order_id가 없으면 빈 칸이다. served는 방금 먼저 내보낸 주문(최근 3건).
 export type QuickLane = {

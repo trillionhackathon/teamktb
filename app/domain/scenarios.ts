@@ -175,6 +175,20 @@ export const scenarios: Scenario[] = [
   ...jsonScenarios,
   ...markdownScenarios,
   {
+    id: 'SC-W',
+    title: '메뉴별 제조 완료',
+    source: '시연용',
+    description: '1번 라떼와 #128 라떼는 함께 만들고, Zoro가 #129의 아이스 아메리카노만 함께 만들 수 있다고 판단한다. #129의 스무디는 아래 작업에 섞지 않는다.',
+    expected: '라떼 2잔과 아이스 아메리카노 1잔이 별도 작업 블록으로 보인다. 라떼 제조 완료를 누르면 #126·#128의 라떼 줄만 가로선이 생긴다.',
+    orders: [
+      { order_id: '#126', channel: 'dine-in', menu_items: [{ menu: 'latte', qty: 1 }], waiting_seconds: 240 },
+      { order_id: '#128', channel: 'takeout', menu_items: [{ menu: 'latte', qty: 1 }], waiting_seconds: 180 },
+      { order_id: '#129', channel: 'takeout', menu_items: [{ menu: 'iced_americano', qty: 1 }, { menu: 'strawberry_smoothie', qty: 1 }], waiting_seconds: 120 },
+      { order_id: '#130', channel: 'dine-in', menu_items: [{ menu: 'strawberry_smoothie', qty: 1 }], waiting_seconds: 60 },
+    ],
+    triggers: [],
+  },
+  {
     id: 'SC-Q',
     title: '1번 기준 같이 만들기 + 손 비는 시간 빠른 주문',
     source: '시연용',

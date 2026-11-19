@@ -8,7 +8,7 @@ import {
   lineName, lineUsesEquipment, maxOrderCups, normalizeLine, optionNames, orderPrice, orderWorkSeconds, stockNeeded, type MenuCatalog,
 } from '../domain/menu.ts';
 import {
-  apartText, blockingReason, buildGroupRequest, groupViews, handsSeconds, headNote, idleWindow, isQuickDessert, lineUnit, quickLaneText, zoroText,
+  apartText, blockingReason, buildGroupRequest, groupViews, handsSeconds, headNote, idleWindow, isQuickDessert, lineUnit, quickLaneText, taskPalette, zoroText,
 } from '../domain/review.ts';
 import { defaultScenarioId, findScenario, scenarios, type SignalPatch } from '../domain/scenarios.ts';
 import type {
@@ -60,7 +60,7 @@ type State = {
   slot4?: Slot4Info;
   workWindow: WorkStep[];
   // 마지막 Zoro 묶기. ok가 false면 aiserver가 답하지 못한 것이다. key는 물을 때의 맨 앞 4건과 기준 주문이다.
-  review?: { key: string; ok: boolean; anchor?: string; groups: Record<string, number>; scores: Record<string, number> };
+  review?: { key: string; ok: boolean; anchor?: string; groups: Record<string, number>; scores: Record<string, number>; matched_menus: Record<string, string[]> };
   // 빠른 주문 칸에서 먼저 내보낸 주문(최근 것부터)
   quickServed: QuickLane['served'];
 };
@@ -70,6 +70,7 @@ type Deps = { catalog: MenuCatalog; config: BoardConfig; ai?: AiClient; now?: ()
 const channels: Channel[] = ['dine-in', 'takeout', 'delivery'];
 const sources: OrderSource[] = ['kiosk', 'delivery_app', 'demo', 'scenario'];
 const equipmentLabels: Record<string, string> = { blender: '블렌더', espresso_machine: '에스프레소 머신', steam_wand: '스팀 완드' };
+const taskKeywords: Record<string, string> = { espresso_machine: '샷 추출', steam_wand: '우유 스팀', ice_dispenser: '얼음 준비', blender: '블렌딩', hot_water: '온수 준비', ice_cream_freezer: '아이스크림 준비', refrigerator: '냉장 재료 준비', juice_dispenser: '주스 준비' };
 // aiserver app/review.py GROUP_THRESHOLD와 같은 값. 화면에서 Zoro 점수를 읽는 기준으로만 쓴다.
 const groupThreshold = 0.5;
 
@@ -259,7 +260,6 @@ export class OrderStore {
     } else {
       // Zoro가 4번을 고르는 사이 고정 주문이 또 끝나면, 비어 있던 4번은 룰 선택으로 먼저 채우고 당긴다.
       if (this.isPicking() && this.state.board.indexOf(orderId) >= 0 && this.state.board.indexOf(orderId) < this.lockedShown()) this.settlePendingPick();
-      if (this.deps.config.fifo && this.state.board[0] === orderId) this.markCompanionsMade(orderId);
       order.status = 'done';
       order.completed_at = now;
       const locked = this.lockedShown();
@@ -655,7 +655,7 @@ export class OrderStore {
       source: order.source,
       source_label: sourceLabels[order.source],
       status: order.status,
-      items: order.menu_items.map((line) => ({ name: lineName(catalog, line), qty: line.qty, unit: lineUnit(catalog, line), options: optionNames(catalog, line.options), group: findDrink(catalog, line.menu)?.group })),
+      items: order.menu_items.map((line, index) => ({ name: lineName(catalog, line), qty: line.qty, unit: lineUnit(catalog, line), options: optionNames(catalog, line.options), group: findDrink(catalog, line.menu)?.group, made: order.made || order.completed_lines?.includes(index) || false })),
       request_note: order.request_note,
       rider_status: order.rider_status,
       rider_label: order.rider_status ? riderLabels[order.rider_status] : undefined,
@@ -664,7 +664,7 @@ export class OrderStore {
       needs_confirmation: order.needs_confirmation,
       rider_eta_at: order.rider_eta_at,
       overtaken: order.overtaken ?? 0,
-      made: order.made ?? false,
+      made: !!order.made || (order.menu_items.length > 0 && order.menu_items.every((_, index) => order.completed_lines?.includes(index))),
       prepped: order.prepped ?? false,
       served_early: order.served_early ?? false,
       received_at: order.received_at,
@@ -791,7 +791,7 @@ export class OrderStore {
     const anchor = this.anchorId();
     const request = anchor ? buildGroupRequest(anchor, this.reviewCandidates(anchor), this.state.orders, this.deps.catalog) : undefined;
     if (!request || request.orders.length < 2) {
-      this.state.review = { key, ok: true, anchor, groups: {}, scores: {} };
+      this.state.review = { key, ok: true, anchor, groups: {}, scores: {}, matched_menus: {} };
       this.commit({ decide: false });
       return;
     }
@@ -799,7 +799,7 @@ export class OrderStore {
     if (seq !== this.reviewSeq) return;   // 기다리는 사이 앞 4건이 또 바뀌었다
     if (!result.ok) console.warn(`[order-store] group-orders failed: ${result.error}`);
     const ok = result.ok && !result.data.fallback;
-    this.state.review = { key, ok, anchor, groups: ok ? result.data.groups : {}, scores: ok ? result.data.scores : {} };
+    this.state.review = { key, ok, anchor, groups: ok ? result.data.groups : {}, scores: ok ? result.data.scores : {}, matched_menus: ok ? result.data.matched_menus : {} };
     this.commit({ decide: false });
   }
 
@@ -807,12 +807,6 @@ export class OrderStore {
   private currentReview(): State['review'] {
     const review = this.state.review;
     return review && review.key === this.reviewKey() ? review : undefined;
-  }
-
-  // 1번이 끝나면 1번과 같은 묶음인 2~4번은 같이 만든 것으로 본다('만듦'. 화면에서는 삭선, 남은 일은 포장뿐).
-  // 위 1번의 완료 버튼과 아래 카드의 완료 버튼이 모두 이 길을 지난다.
-  private markCompanionsMade(headId: string): void {
-    for (const id of this.companionsOf(headId)) this.state.orders.get(id)!.made = true;
   }
 
   // 기준 주문과 같은 묶음인 위 4칸 주문(아직 안 끝난 것만)
@@ -868,6 +862,29 @@ export class OrderStore {
         order_ids: [headId, ...(anchor && anchor !== headId ? [anchor] : []), ...companions],
         color: anchor ? review.groups[anchor]?.color : undefined,
       });
+      const taskAnchor = anchor ?? headId;
+      const candidateIds = [taskAnchor, ...this.companionsOf(anchor)];
+      const tasks = new Map<string, Note>();
+      for (const id of candidateIds) {
+        const order = this.state.orders.get(id)!;
+        const allowed = id === taskAnchor ? undefined : this.currentReview()?.matched_menus[id] ?? [];
+        order.menu_items.forEach((line, line_index) => {
+          if (allowed && (!allowed.includes(line.menu) || line.options.some((option) => catalog.options[option]?.batch_blocking))) return;
+          const key = `${line.menu}:${line.size}:${line.options.join(',')}`;
+          const taskId = `task:${taskAnchor}:${encodeURIComponent(key)}`;
+          const task = tasks.get(key) ?? { id: taskId, kind: 'task', text: '', order_ids: [], parts: [], done: true, ready: !this.isBlocked(order), unit: lineUnit(catalog, line), color: taskPalette[tasks.size % taskPalette.length] };
+          task.order_ids.push(id);
+          task.parts!.push({ order_id: id, line_index, qty: line.qty });
+          task.done = task.done && !!(order.made || order.completed_lines?.includes(line_index));
+          task.ready = task.ready && !this.isBlocked(order);
+          const qty = task.parts!.reduce((sum, part) => sum + part.qty, 0);
+          const options = optionNames(catalog, line.options).join(', ');
+          task.text = `${lineName(catalog, line)} ${qty}${lineUnit(catalog, line)} 만들기${options ? ` (${options})` : ''}`;
+          task.detail = findDrink(catalog, line.menu)?.equipment.map((name) => taskKeywords[name] ?? equipmentLabels[name] ?? name).join(' · ');
+          tasks.set(key, task);
+        });
+      }
+      notes.push(...tasks.values());
     }
     const laneId = this.quickLaneId();
     if (laneId) {
@@ -917,6 +934,18 @@ export class OrderStore {
 
   // 빠른 주문 카드(8번 칸과 아래 팁 칸)의 "내보냈어요": 그 주문을 완료한다. (1번 카드의 완료는 위 완료 버튼과 같은 주문 완료 API를 쓴다.)
   handleNote(noteId: string): { ok: true } | StoreError {
+    if (noteId.startsWith('task:')) {
+      const task = this.noteViews(this.snapshot().board).find((note) => note.id === noteId && note.kind === 'task');
+      if (!task) return { error: '이미 바뀐 작업이에요.', status: 404 };
+      if (task.done) return { error: '이미 완료된 작업이에요.', status: 409 };
+      if (!task.ready) return { error: '지금 만들 수 없는 작업이에요.', status: 409 };
+      for (const { order_id, line_index } of task.parts ?? []) {
+        const order = this.state.orders.get(order_id)!;
+        order.completed_lines = [...new Set([...(order.completed_lines ?? []), line_index])];
+      }
+      this.commit({ decide: false });
+      return { ok: true };
+    }
     if (!noteId.startsWith('quick:')) return { error: '이 카드는 버튼으로 처리하지 않아요.', status: 400 };
     const id = noteId.slice('quick:'.length);
     if (this.quickLaneId() !== id) return { error: '이미 처리된 알림이에요.', status: 404 };

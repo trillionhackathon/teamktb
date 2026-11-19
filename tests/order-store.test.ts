@@ -406,7 +406,7 @@ describe('OrderStore with aiserver', () => {
   });
   describe('FIFO board with Zoro grouping of the top 4 and the note cards below', () => {
     const fifoConfig = { ...config, fifo: true };
-    const group = (groups: Record<string, number>, scores: Record<string, number> = {}): AiResult<AiGroupResult> => ({ ok: true, data: { groups, scores, fallback: false } });
+    const group = (groups: Record<string, number>, scores: Record<string, number> = {}, matched_menus: Record<string, string[]> = {}): AiResult<AiGroupResult> => ({ ok: true, data: { groups, scores, matched_menus, fallback: false } });
     const fifoStore = (groupOrders?: (request: AiGroupRequest) => Promise<AiResult<AiGroupResult>>, pickNext = async (): Promise<AiResult<AiPickResult>> => { throw new Error('Zoro must not pick slot 4 in FIFO'); }) =>
       new OrderStore({ catalog: menuCatalog, config: fifoConfig, decideDelayMs: 0, ai: { ...fakeAi({ groupOrders }), pickNext } });
 
@@ -449,21 +449,56 @@ describe('OrderStore with aiserver', () => {
       assert.equal(store.snapshot().notes.find(({ kind }) => kind === 'head')!.reason, '#104 카페 라떼는 디카페인이라 원두를 바꿔야 해서 따로 만들어요.');
     });
 
-    it('moves the anchor to the next order to make when #1 was already made together', async () => {
-      const requests: AiGroupRequest[] = [];
-      let calls = 0;
-      const store = fifoStore(async (request) => { requests.push(request); calls += 1; return group(calls === 1 ? { '#101': 1, '#104': 1 } : {}); });
+    it('marks only the matched menu lines when a task is completed', async () => {
+      const store = fifoStore(async () => group({ '#101': 1, '#104': 1 }, {}, { '#104': ['latte'] }));
       await store.settle();
-      store.updateOrderStatus('#101', 'complete');
-      store.updateOrderStatus('#102', 'complete');
-      store.updateOrderStatus('#103', 'complete');
+      const task = store.snapshot().notes.find(({ kind }) => kind === 'task')!;
+      assert.equal(task.text, '카페 라떼 3잔 만들기');
+      assert.deepEqual(task.parts?.map(({ order_id, qty }) => [order_id, qty]), [['#101', 1], ['#104', 2]]);
+      assert.deepEqual(store.handleNote(task.id), { ok: true });
+      assert.equal(find(store, '#101').items[0].made, true);
+      assert.equal(find(store, '#104').items[0].made, true);
+      assert.equal(find(store, '#104').status, 'waiting');
+      assert.equal(store.snapshot().notes.find(({ id }) => id === task.id)?.done, true);
+      assert.equal('error' in store.handleNote(task.id), true, 'double completion is rejected');
+    });
+
+    it('SC-W shows only Zoro-matched menus and lets one menu finish independently', async () => {
+      const store = fifoStore(async () => group(
+        { '#126': 1, '#128': 1, '#129': 1 },
+        { '#130': 0.1, '#128': 1, '#129': 0.9 },
+        { '#128': ['latte'], '#129': ['iced_americano'] },
+      ));
+      store.loadScenario('SC-W');
       await store.settle();
-      assert.equal(find(store, '#104').made, true);
-      assert.equal(requests.at(-1)!.anchor, '#105', '#104 only needs packing, so #105 is the anchor');
-      assert.ok(!requests.at(-1)!.orders.some(({ id }) => id === '#104'), 'a made order is not compared');
-      const head = store.snapshot().notes.find(({ kind }) => kind === 'head')!;
-      assert.equal(head.text, '#104 카페 라떼 2잔은 앞에서 같이 만들어 뒀어요. 포장만 하면 돼요.');
-      assert.match(head.detail!, /^다음은 #105 아이스 아메리카노 1잔 차례예요\./);
+      const tasks = store.snapshot().notes.filter(({ kind }) => kind === 'task');
+      assert.deepEqual(tasks.map(({ text }) => text), ['카페 라떼 2잔 만들기', '아이스 아메리카노 1잔 만들기']);
+      assert.ok(tasks.every(({ color, parts }) => color && parts?.length), 'every manufacturing task has one color for all of its parts');
+      assert.equal(new Set(tasks.map(({ color }) => color)).size, tasks.length, 'different manufacturing tasks have different colors');
+      assert.equal(tasks[0].detail, '샷 추출 · 우유 스팀');
+      assert.equal(tasks[1].detail, '샷 추출 · 얼음 준비');
+      assert.deepEqual(tasks[0].order_ids, ['#126', '#128']);
+      assert.deepEqual(tasks[1].order_ids, ['#129']);
+      assert.deepEqual(store.handleNote(tasks[0].id), { ok: true });
+      assert.equal(find(store, '#126').items[0].made, true);
+      assert.equal(find(store, '#128').items[0].made, true);
+      assert.equal(find(store, '#129').items[0].made, false);
+      assert.equal(find(store, '#129').items[1].made, false);
+      assert.equal(find(store, '#128').status, 'waiting');
+      assert.equal(store.snapshot().notes.find(({ id }) => id === tasks[1].id)?.done, false);
+    });
+
+    it('SC-W leaves only #128 latte unfinished when the first order completes first', async () => {
+      const store = fifoStore(async () => group({ '#126': 1, '#128': 1 }, {}, { '#128': ['latte'] }));
+      store.loadScenario('SC-W');
+      await store.settle();
+      store.updateOrderStatus('#126', 'complete');
+      await store.settle();
+      const task = store.snapshot().notes.find(({ kind }) => kind === 'task')!;
+      assert.equal(task.text, '카페 라떼 1잔 만들기');
+      assert.deepEqual(task.parts, [{ order_id: '#128', line_index: 0, qty: 1 }]);
+      assert.equal(task.done, false);
+      assert.equal(find(store, '#128').items[0].made, false);
     });
 
     it('writes the #1 card: #1\'s menus first, then which of 2-4 are made together', async () => {
@@ -473,7 +508,7 @@ describe('OrderStore with aiserver', () => {
       const head = notes.find(({ kind }) => kind === 'head')!;
       assert.equal(head.text, '#101 카페 라떼 1잔을 만들 때 #104 카페 라떼 2잔도 같이 만드세요.');
       assert.equal(head.detail, '같은 메뉴라 한 번에 만들면 돼요.', 'why they are made together, in plain words');
-      assert.ok(!Object.values(store.snapshot().notes).some((note) => [note.text, note.detail, note.reason, note.zoro].some((t) => t?.includes('·'))), 'no middle dots');
+      assert.ok(![head.text, head.detail, head.reason, head.zoro].some((text) => text?.includes('·')), 'legacy head note remains readable');
       assert.deepEqual(head.order_ids, ['#101', '#104']);
       assert.deepEqual(Object.keys(store.snapshot().review.groups).sort(), ['#101', '#104'], 'a group of 2-4 without #1 is not shown');
     });
@@ -494,23 +529,15 @@ describe('OrderStore with aiserver', () => {
       assert.equal(store.snapshot().notes.find(({ kind }) => kind === 'head')!.detail, '같이 만들 주문은 없어요.');
     });
 
-    it('completing #1 (the top button and the card button are the same call) strikes its companions and re-compares the new top 4', async () => {
-      let calls = 0;
-      const store = fifoStore(async () => { calls += 1; return group(calls === 1 ? { '#101': 1, '#104': 1 } : {}); });
+    it('recalculates an unfinished task when an order is completed first', async () => {
+      const store = fifoStore(async () => group({ '#101': 1, '#104': 1 }, {}, { '#104': ['latte'] }));
       await store.settle();
-      store.updateOrderStatus('#101', 'complete');
-      assert.equal(find(store, '#104').made, true, 'made together with #1');
-      assert.equal(find(store, '#102').made, false);
+      store.updateOrderStatus('#104', 'complete');
       await store.settle();
-      assert.equal(calls, 2, 'the new top 4 is compared again');
-      const head = store.snapshot().notes.find(({ kind }) => kind === 'head')!;
-      assert.equal(head.text.startsWith('#102'), true);
-      store.updateOrderStatus('#102', 'complete');
-      store.updateOrderStatus('#103', 'complete');
-      await store.settle();
-      const now = store.snapshot().notes.find(({ kind }) => kind === 'head')!;
-      assert.equal(now.text, '#104 카페 라떼 2잔은 앞에서 같이 만들어 뒀어요. 포장만 하면 돼요.');
-      assert.match(now.detail!, /^다음은 #105 /);
+      const task = store.snapshot().notes.find(({ kind }) => kind === 'task')!;
+      assert.equal(task.text, '카페 라떼 1잔 만들기');
+      assert.equal(task.done, false);
+      assert.deepEqual(task.order_ids, ['#101']);
     });
 
     it('does not strike anything when a non-#1 order is completed first', async () => {
