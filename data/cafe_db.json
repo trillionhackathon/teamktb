@@ -1,0 +1,310 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-11-19",
+  "contract_source": {
+    "ground_truth": "https://github.com/trillionhackathon/aiserver/blob/main/README.md",
+    "note": "추천 단위·엔드포인트·KDS 보드·출력 형태는 aiserver README를 정본으로 따른다. menus의 숫자는 README가 '예시이고 팀이 정해야 한다'고 명시한 자리표시자를 docs/Cafe_Recipe_Database.md 리서치로 교체한 값이다. quality_hold 중 라떼 항목은 README가 '없음'으로 적었으나 실제 제약이 있어 이 데이터에서 추가했다 — 아래 constraint_ids 참조.",
+    "rationale_docs": [
+      "docs/Cafe_Recipe_Database.md",
+      "docs/Demo_Scenarios.md",
+      "docs/AI_Cafe_Manager_Idea_Summary_2026.md"
+    ]
+  },
+  "model": {
+    "name": "Zoro-1",
+    "endpoint": "POST /v1/systemone",
+    "chat_endpoint": "POST /v1/chat/completions",
+    "confidence_threshold": 0.7,
+    "confidence_threshold_note": "출발점 값. 시나리오 30~50개로 보정 필요(README 명시)",
+    "questions": [
+      {
+        "id": "priority_order",
+        "type": "choice",
+        "scope": "6~10번 칸 중 다음에 먼저 만들 주문. KEEP=현재 유지 포함",
+        "writes_to": "scheduler"
+      },
+      {
+        "id": "work_tip",
+        "type": "noul",
+        "scope": "후보 팁마다 지금 필요한지",
+        "writes_to": "tip_row"
+      },
+      {
+        "id": "event_interpretation",
+        "type": "choice, noul, score",
+        "scope": "사건의 종류, 확인 필요 여부, 긴급도",
+        "writes_to": "state_update, tip_row"
+      },
+      {
+        "id": "stock_policy",
+        "type": "choice",
+        "scope": "메뉴별 밀기/유지/아끼기",
+        "writes_to": "tip_row, customer_site"
+      }
+    ]
+  },
+  "kds_board": {
+    "rows": 2,
+    "cols": 5,
+    "locked_row": "top (slots 1-5) — FIFO 고정, AI가 순서를 바꾸지 않음",
+    "reorderable_row": "bottom (slots 6-10) — Zoro의 priority_order 판단이 반영됨",
+    "locked_count": 5,
+    "overflow": "11번째 주문부터 화면 밖 대기열",
+    "card_fields": [
+      "order_id",
+      "menu_items",
+      "channel",
+      "elapsed_sec_since_received",
+      "eta",
+      "complete_button"
+    ],
+    "elapsed_time_rule": "경과 시간은 접수 시각부터 고정. 재배치해도 안 바뀜 — 바뀌는 건 eta뿐",
+    "promotion_rule": "완료 버튼 누르면 카드 제거, 6번이 5번으로 올라가는 순간 그 자리의 순서가 고정됨",
+    "spill_handling": "쏟음 등 재제조는 새 카드로 만들어 1번 슬롯에 직접 삽입 — 고정칸 예외이며 AI가 아니라 코드가 처리. work_tip 칸의 청소 안내와는 별개 이벤트"
+  },
+  "signals_schema": {
+    "note": "5신호 묶음. 1~2초 안에 들어온 이벤트는 묶어서 한 번만 systemone 호출(README). order 신호의 세부 계산식은 menus 테이블과 아래 formula를 코드가 채운다.",
+    "inventory": {
+      "coffee_beans_shots_left": "number",
+      "strawberry_servings_left": "number",
+      "items_near_expiry": "array"
+    },
+    "delivery": {
+      "weather": "string (맑음/비/눈 등)",
+      "surge_fee_active": "boolean",
+      "riders_available": "number",
+      "per_order_rider_status": "{order_id: 'not_dispatched'|'dispatched'|'arrived'}",
+      "regime": "'baemin_pull' | 'coupangeats_deadline' — README에 없는 필드, 리서치로 추가",
+      "regime_note": "배민형: 라이더 배차 후 '조리시작' 신호가 와야 pull 시작, 접수 순서≠시작 순서. 쿠팡이츠형: 수락 즉시 deadline countdown(15분, 단축 논의 중 5분). 두 레짐은 서로 다른 스케줄링 문제이므로 같은 값으로 뭉개면 안 됨. 출처: docs/Cafe_Recipe_Database.md 7.5절"
+    },
+    "store": {
+      "return_tray_status": "string",
+      "floor_status": "string",
+      "equipment_status": "object",
+      "staff_count": "number"
+    },
+    "event": {
+      "raw_text": "string",
+      "category": "'spill_cleanup' | 'stock_shortage' | 'customer_message' | 'rider_message' | 'equipment_failure' | 'weather_change'",
+      "message_label": "'recipe_affecting' | 'resource_affecting' | 'packaging_only' — category가 customer_message/rider_message일 때만. README에 없는 필드, 리서치로 추가",
+      "message_label_note": "recipe_affecting(샷추가·덜달게 등)=duration 영향, resource_affecting(우유종류 변경 등)=배칭 해제, packaging_only=제조 영향 없음. 출처: docs/Cafe_Recipe_Database.md 8절",
+      "needs_confirmation": "boolean — 애매한 정보는 숫자로 확정하지 않고 true로 남김(README 명시)",
+      "urgency_score": "number 0~1, 선택"
+    },
+    "order": {
+      "order_id": "string, '#101' 형식",
+      "menu_items": "[{menu, qty}]",
+      "received_at": "ISO8601",
+      "waiting_seconds": "number",
+      "deadline_seconds": "number | null",
+      "remaining_work_seconds": "number — menus 테이블로 코드가 계산",
+      "slack_seconds": "number — deadline_seconds - remaining_work_seconds, 마이너스면 이미 늦음",
+      "complexity": "number — menus[menu].complexity 합",
+      "quality_hold": "object | null — menus[menu].quality_hold 중 가장 급한 것"
+    }
+  },
+  "remaining_work_formula": {
+    "per_menu": "first_cup_sec + (qty - 1) * additional_cup_sec",
+    "per_order": "sum over menu_items",
+    "note": "작업 단위(샷 추출, 블렌딩)를 하나씩 추적하지 않고 주문 단위 합계만 쓴다(README 명시). 정밀 시뮬레이션이 아니라 추정."
+  },
+  "quality_constraints": {
+    "note": "README의 quality_hold는 메뉴당 하나의 단순 플래그다. 아래는 그 값을 채우는 데 쓴 내부 근거이며, menus[x].constraint_ids로 연결한다. 실제 서버가 이 레벨까지 추적할 필요는 없다 — 왜 그 숫자인지 설명하는 용도.",
+    "Q-GRIND": {
+      "rule": "그라인딩 완료 → 추출 시작 ≤ 30초(권장 20초)",
+      "violation": "정전기 응집·CO2 손실로 크레마 저하",
+      "blocks": "여러 잔 분량을 미리 갈아두는 배칭 — 선형 공식이 암묵적으로 허용해버리는 최적화라서 반드시 명시해야 함",
+      "evidence_grade": "high"
+    },
+    "Q-MILK": {
+      "rule": "스티밍 완료 → 붓기 시작 ≤ 30초(최적 10~20초)",
+      "violation": "거품·액상 분리, 라떼아트 불가",
+      "blocks": "우유 여러 잔 미리 스팀해서 쌓아두기",
+      "evidence_grade": "medium"
+    },
+    "Q-SHOT": {
+      "rule": "추출 완료 → 사용 soft 10초 / hard 60초",
+      "violation": "크레마 소실, 향 둔화",
+      "evidence_grade": "low",
+      "note": "출처 충돌(10초 엄격설 vs 20~30초 실무설). MVP에서 빼도 무방"
+    },
+    "Q-SMOOTHIE": {
+      "rule": "완성 → 고객 수령 목표 90초 / 허용 180초 / 하드리밋 300초",
+      "violation": "상 분리·묽어짐",
+      "recoverable": "리블렌드 10~15초로 복구 가능(P1)",
+      "evidence_grade": "low",
+      "note": "90/180/300은 조작값. 출처가 주는 건 '즉시'와 '15~30분' 두 경계뿐. 현장 측정으로 교체 대상"
+    }
+  },
+  "menus": {
+    "iced_americano": {
+      "name_kr": "아이스 아메리카노",
+      "first_cup_sec": 71,
+      "additional_cup_sec": 41,
+      "complexity": 1,
+      "equipment": [
+        "espresso_machine"
+      ],
+      "constraint_ids": [
+        "Q-GRIND",
+        "Q-SHOT"
+      ],
+      "quality_hold": null,
+      "assumptions": {
+        "volumetric": true,
+        "note": "추출이 자동 정지되어 unattended 30초 확보. 세미오토면 이 전제가 깨짐"
+      },
+      "derivation": {
+        "first_cup_basis": "직렬 합계(컵·얼음·물 13초 + 퍽프렙 17초 + 추출 30초 + 마감 11초, 임계경로 기준 약 58초를 보수적으로 71초로 집계)",
+        "additional_cup_basis": "바리스타 손 사용 41초. 매 잔 그라인딩·탬핑·붓기를 새로 해야 해서 무인 구간이 재사용되지 않음"
+      },
+      "recipe_ref": "recipe.json#/drinks/iced_americano"
+    },
+    "latte": {
+      "name_kr": "라떼",
+      "first_cup_sec": 114,
+      "additional_cup_sec": 84,
+      "complexity": 2,
+      "equipment": [
+        "espresso_machine",
+        "steam"
+      ],
+      "constraint_ids": [
+        "Q-GRIND",
+        "Q-MILK",
+        "Q-SHOT"
+      ],
+      "quality_hold": {
+        "after_event": "steam_milk_complete",
+        "target_sec": 20,
+        "tolerable_sec": 30,
+        "hard_limit_sec": null,
+        "evidence_grade": "medium",
+        "note": "README는 '없음'으로 적었으나 실제 제약 있음(Q-MILK). 스팀 완료 후 30초 안에 부어야 라떼아트 유지. 이 필드를 README의 예시 그대로 두면 '우유 여러 잔 미리 스팀'이 최적으로 오판될 수 있음"
+      },
+      "assumptions": {
+        "volumetric": true,
+        "autosteam": false,
+        "note": "수동 스티밍 가정 — 가장 큰 리스크 플래그. autosteam=true면 additional_cup_sec이 84→59로 내려감(추출 unattended 25초가 다른 작업에 풀림)"
+      },
+      "derivation": {
+        "first_cup_basis": "직렬 합계(잔준비4+퍽프렙17+추출30+우유준비8+스팀25+정리6+와이프4+라떼아트12+마감8 ≈ 114초, autosteam=false 기준)",
+        "additional_cup_basis": "바리스타 손 사용 84초. 수동 스티밍은 attended라 추출 30초의 unattended 구간이 이미 자기 우유에 소비되어 다음 잔에 남는 여유가 사실상 0"
+      },
+      "recipe_ref": "recipe.json#/drinks/latte"
+    },
+    "strawberry_smoothie": {
+      "name_kr": "딸기 스무디",
+      "first_cup_sec": 117,
+      "additional_cup_sec": 82,
+      "complexity": 3,
+      "equipment": [
+        "blender"
+      ],
+      "constraint_ids": [
+        "Q-SMOOTHIE"
+      ],
+      "quality_hold": {
+        "after_event": "pour_out_complete",
+        "target_sec": 90,
+        "tolerable_sec": 180,
+        "hard_limit_sec": 300,
+        "evidence_grade": "low",
+        "note": "README의 '만든 뒤 오래 두면 안 됨'을 숫자로 구체화. 90/180/300은 조작값 — 출처는 '즉시'와 '15~30분' 두 경계만 줌"
+      },
+      "assumptions": {
+        "note": "블렌더 1대, 원터치 자동정지 프로그램 가정(상업용 블렌더 공통 사양)"
+      },
+      "derivation": {
+        "first_cup_basis": "직렬 합계(재료투입47+블렌딩35+마감21+린스10+알파 ≈ 117초)",
+        "additional_cup_basis": "바리스타 손 사용 82초. 블렌더 상호배제 구간(용기거치→블렌딩→따르기→린스 59초)이 실질적으로 이미 이 값 안에 반영되어 있어, 스무디 2잔이 겹치면 블렌더 대기가 자연히 누적됨"
+      },
+      "recipe_ref": "recipe.json#/drinks/strawberry_smoothie"
+    }
+  },
+  "fallback_rules": [
+    {
+      "feature": "priority_order",
+      "primary": "zoro",
+      "on_low_confidence_or_fail": "rule: FIFO + 라이더 도착 우선",
+      "on_rule_fail": null,
+      "latency_budget_sec": 0.5
+    },
+    {
+      "feature": "work_tip",
+      "primary": "zoro",
+      "on_low_confidence_or_fail": "llm: 같은 후보 목록에서 선택(비동기)",
+      "on_rule_fail": "팁 표시 안 함"
+    },
+    {
+      "feature": "event_interpretation",
+      "primary": "zoro",
+      "on_low_confidence_or_fail": "llm: 같은 분류 중 선택(비동기)",
+      "on_rule_fail": "needs_confirmation=true로 표시"
+    },
+    {
+      "feature": "stock_policy",
+      "primary": "zoro",
+      "on_low_confidence_or_fail": "변경 없음(현상 유지)",
+      "on_rule_fail": null
+    },
+    {
+      "feature": "eta_wait_time",
+      "primary": "code_calculated",
+      "on_low_confidence_or_fail": null,
+      "on_rule_fail": null
+    }
+  ],
+  "output_example": {
+    "note": "aiserver README의 AI 출력 형태 초안을 그대로 옮김. 실제 필드명은 백엔드 합의로 바뀔 수 있음",
+    "orders": [
+      "#101",
+      "#102",
+      "#103",
+      "#104",
+      "#105",
+      "#108",
+      "#106",
+      "#107",
+      "#109",
+      "#110"
+    ],
+    "locked_count": 5,
+    "moves": [
+      {
+        "order_id": "#108",
+        "from": 8,
+        "to": 6,
+        "reason": "rider_waiting",
+        "confidence": 0.91,
+        "source": "zoro"
+      }
+    ],
+    "eta": {
+      "#108": "2026-11-19T15:42:10+09:00"
+    },
+    "customer": {
+      "#108": {
+        "wait_minutes": 4,
+        "ahead": 5,
+        "reason": "배달 기사가 도착한 주문이 먼저 나가요"
+      }
+    },
+    "tips": [
+      {
+        "id": "beans",
+        "text": "원두 재고 확인 필수",
+        "confidence": 0.63,
+        "source": "zoro"
+      }
+    ],
+    "stock_policy": {
+      "strawberry": {
+        "policy": "save",
+        "confidence": 0.74,
+        "source": "zoro"
+      }
+    },
+    "fallback": false
+  }
+}

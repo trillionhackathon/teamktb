@@ -1,0 +1,129 @@
+{
+  "schema_version": "3.0",
+  "updated_at": "2026-11-19",
+  "contract_source": "data/cafe_db.json — 주문 단위(10칸 KDS 보드, /v1/systemone 4질문: priority_order / work_tip / event_interpretation / stock_policy)",
+  "note": "order_id는 '#NNN' 형식, 작업(task) 단위 추천이 아니라 주문(order) 단위 추천이다. 청소 등 매장 이벤트는 보드의 카드가 아니라 work_tip 칸에 뜬다.",
+
+  "invariants": {
+    "INV-1": "1~5번 고정칸은 재배열 대상이 아니다",
+    "INV-2": "priority_order 응답의 order_id는 현재 6~10번 칸에 있는 주문이어야 한다",
+    "INV-3": "confidence < cafe_db.json의 confidence_threshold(0.7)면 해당 기능은 fallback 경로를 탄다",
+    "INV-4": "애매한 정보는 숫자로 확정하지 않고 needs_confirmation=true로 남긴다",
+    "INV-5": "fallback=true인 응답의 순서 변경은 규칙(FIFO + 라이더 도착 우선)으로만 생성된다",
+    "INV-6": "1~2초 내 도착한 이벤트는 한 번만 묶어 처리한다(event dedup)",
+    "INV-7": "쏟음으로 인한 음료 재제조는 새 카드를 1번 슬롯에 코드가 직접 삽입한다(AI 경로 아님). 단순 환경 이벤트(바닥 청소 등)는 카드가 아니라 work_tip으로만 나타난다"
+  },
+
+  "board_shared_example": {
+    "note": "cafe_db.json의 kds_board(2x5, 고정 5 + 재배열 5)를 쓰는 공통 초기 상태",
+    "orders": ["#101", "#102", "#103", "#104", "#105", "#106", "#107", "#108", "#109", "#110"],
+    "locked_count": 5,
+    "detail": {
+      "#106": {"menu_items": [{"menu": "latte", "qty": 1}], "channel": "dine-in", "waiting_seconds": 40},
+      "#107": {"menu_items": [{"menu": "iced_americano", "qty": 2}], "channel": "takeout", "waiting_seconds": 30},
+      "#108": {"menu_items": [{"menu": "strawberry_smoothie", "qty": 2}], "channel": "delivery", "waiting_seconds": 90, "rider_status": "not_dispatched"},
+      "#109": {"menu_items": [{"menu": "iced_americano", "qty": 1}], "channel": "takeout", "waiting_seconds": 20},
+      "#110": {"menu_items": [{"menu": "latte", "qty": 1}], "channel": "dine-in", "waiting_seconds": 10}
+    }
+  },
+
+  "scenarios": {
+
+    "SC-A": {
+      "title": "배달 메시지로 품질 제약 발생",
+      "systemone_question": "event_interpretation",
+      "why_this_scenario": "'거의 다 왔어요'는 숫자가 아니다. 규칙 기반 코드는 이 문자열로 할 수 있는 일이 없다. 숫자로 잘못 환산하면(INV-4 위반) 스무디가 녹거나 기사가 기다린다.",
+      "trigger": {
+        "t": "0:45",
+        "event": {"raw_text": "기사님 거의 다 왔어요. 스무디 안 녹게 부탁드려요.", "category": "rider_message", "order_id": "#108"}
+      },
+      "expected_output": {
+        "category": "quality_request",
+        "needs_confirmation": true,
+        "applies_quality_hold": "cafe_db.json의 Q-SMOOTHIE"
+      },
+      "not_allowed": "pickup_eta_seconds를 '거의 다 왔어요'로부터 숫자로 확정하는 것",
+      "followup": {
+        "t": "1:30",
+        "event": {"raw_text": "5분 뒤 도착합니다.", "category": "rider_message", "order_id": "#108"},
+        "expected_output": {"category": "pickup_eta_update", "eta_confirmed": true, "pickup_eta_seconds": 300},
+        "note": "숫자 변환은 모델이 아니라 코드가 한다 — 모델은 '확정된 시간 정보가 있는가'만 판단"
+      },
+      "invariants_checked": ["INV-4", "INV-6"],
+      "failure_modes": [
+        "'거의 다 왔어요'에서 숫자 ETA를 만들어내는 것",
+        "메시지 전후로 needs_confirmation이 전혀 안 변하는 것",
+        "같은 메시지를 두 번 처리해 판단이 두 번 바뀌는 것(INV-6)"
+      ],
+      "scoring": {"창의성": "핵심 — 배달 플랫폼 쓰는 모든 카페에 적용 가능", "목표_달성": "메시지 전후 해석 변화가 로그로 입증", "라이브_데모": "심사위원이 직접 메시지를 입력해 결과가 바뀌는 것을 보는 시나리오"}
+    },
+
+    "SC-B": {
+      "title": "라이더 도착으로 보드 재배열",
+      "systemone_question": "priority_order",
+      "why_this_scenario": "cafe_db.json의 output_example이 바로 이 상황이다. 6~10번 칸 중 주문을 고르는 가장 기본적인 판단.",
+      "trigger": {
+        "t": "2:10",
+        "signal": {"delivery": {"per_order_rider_status": {"#108": "arrived"}}}
+      },
+      "expected_output": {
+        "orders_tail": ["#108", "#106", "#107", "#109", "#110"],
+        "moves": [{"order_id": "#108", "from": 8, "to": 6, "reason": "rider_waiting"}]
+      },
+      "invariants_checked": ["INV-1", "INV-2", "INV-3"],
+      "failure_modes": [
+        "1~5번 고정칸을 재배열하는 것(INV-1)",
+        "6~10번에 없는 order_id를 moves에 반환하는 것(INV-2)",
+        "confidence가 threshold 미만인데도 fallback 없이 그대로 적용하는 것(INV-3)"
+      ],
+      "scoring": {"목표_달성": "재배열 후 #108 완료 시각이 당겨짐을 로그로 확인", "라이브_데모": "보드 화면에서 카드가 8번에서 6번으로 올라가는 장면"}
+    },
+
+    "SC-C": {
+      "title": "재고 부족 팁이 낮은 확신도로 Fallback",
+      "systemone_question": "work_tip",
+      "why_this_scenario": "심사 항목 '오류 시에도 동작' 15점은 주장이 아니라 장애를 일으킨 로그로만 받을 수 있다. confidence가 낮을 때 cafe_db.json의 fallback_rules(work_tip: zoro -> llm -> 팁 표시 안 함)가 실제로 작동하는지 보여준다.",
+      "trigger": {
+        "t": "0:05",
+        "signal": {"inventory": {"coffee_beans_shots_left": 12}},
+        "event": {"raw_text": "아이스 아메리카노 100잔 주문 접수", "category": "stock_shortage"}
+      },
+      "expected_output": {
+        "candidate_tip": {"id": "beans", "text": "원두 재고 확인 필수"},
+        "low_confidence_path": "cafe_db.json.fallback_rules[work_tip] 적용 -> LLM이 같은 후보 목록에서 선택 -> 그래도 실패하면 팁 표시 안 함"
+      },
+      "invariants_checked": ["INV-3"],
+      "failure_modes": [
+        "confidence가 threshold 미만인데 zoro 결과를 그대로 적용하는 것",
+        "fallback 발생 사실을 로그에서 숨기는 것",
+        "LLM 폴백이 비동기임에도 KDS 보드 갱신 자체를 막는 것"
+      ],
+      "scoring": {"오류_시에도_동작": "핵심 — fallback 경로가 실제로 동작함을 로그로 증명", "발표": "'Zoro가 확신하지 못하면 LLM이, 그것도 안 되면 조용히 넘어가지 않고 상태를 남깁니다'"}
+    },
+
+    "SC-D": {
+      "title": "딸기 재고 부족 — 밀기/유지/아끼기 판단 (여유 있으면 추가)",
+      "systemone_question": "stock_policy",
+      "why_this_scenario": "'팔아야 하나 아껴야 하나'는 규칙으로 정하기 어려운 영업 판단. 추천 단위가 주문이 아니라 메뉴 레벨 정책이라는 점에서 SC-A/B/C와 다른 축.",
+      "trigger": {
+        "t": "임의",
+        "signal": {"inventory": {"strawberry_servings_left": 8}}
+      },
+      "expected_output": {"menu": "strawberry_smoothie", "policy": "save"},
+      "effect": "work_tip과 손님 QR 사이트 추천에 반영",
+      "invariants_checked": [],
+      "scoring": {"창의성": "부분 기여 — 재고 정책까지 다루는 범위의 확장"}
+    }
+
+  },
+
+  "submission_recommendation": {
+    "required_3": ["SC-A", "SC-B", "SC-C"],
+    "reason": "서로 다른 systemone 질문 유형(event_interpretation / priority_order / work_tip) + 서로 다른 트리거 계열을 커버해 '서로 다른 3가지 시나리오' 요건을 설명하기 가장 쉽다.",
+    "optional_bonus": ["SC-D"]
+  },
+
+  "conflict_resolved": {
+    "note": "이 파일은 이전 버전(scenarios.md 기준, 작업 단위 T101/O101/현장조치 카드 모델)을 cafe_db.json 기준(주문 단위, #NNN, work_tip)으로 되돌렸다. 루트의 scenarios.md는 아직 작업 단위 모델을 설명하고 있어 이 파일과 맞지 않는다 — 팀이 scenarios.md도 같이 갱신할지 결정 필요."
+  }
+}
