@@ -17,15 +17,6 @@ const aiStatusLabels: Record<Decision['ai_status'], string> = { connected: 'AI �
 const FIXED_COUNT = 4;
 const WAITING_COUNT = 4;
 
-// 위 4칸 설명. Zoro는 1번(기준)과 비슷한 2~4번만 본다.
-function reviewHint(review: BoardReview, grouped: boolean): string {
-  if (review.status === 'off') return '들어온 순서대로예요. AI 서버가 없어서 묶지 않아요';
-  if (!review.anchor) return '들어온 순서대로예요';
-  if (review.status === 'checking') return `들어온 순서대로예요. Zoro가 ${review.anchor} 주문과 비슷한 주문을 찾고 있어요`;
-  if (review.status === 'unavailable') return '들어온 순서대로예요. Zoro가 답하지 못해서 묶지 못했어요';
-  return grouped ? `들어온 순서대로예요. 같은 색끼리 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
-}
-
 // 카드에 붙이는 묶음 이름표.
 function groupTagText(group: BoardReview['groups'][string]): string {
   return group.role === 'anchor' ? '먼저 만들기' : '같이 만들기';
@@ -56,7 +47,7 @@ function useAgent(order: string[], version: number): { agent: AgentResponse | nu
 type AgentLogEntry = AgentMessageData & { key: string; seen_at: string; resolved: boolean };
 const maxLogEntries = 50;
 
-function useAgentLog(agent: AgentResponse | null): { summary: AgentMessageData | undefined; log: AgentLogEntry[]; dismissItem: (itemId: string) => void } {
+function useAgentLog(agent: AgentResponse | null): { log: AgentLogEntry[]; dismissItem: (itemId: string) => void } {
   const [log, setLog] = useState<AgentLogEntry[]>([]);
   useEffect(() => {
     if (!agent) return;
@@ -77,7 +68,7 @@ function useAgentLog(agent: AgentResponse | null): { summary: AgentMessageData |
   }, [agent]);
   // 같은 재고의 지난 알림(해결됨으로 남은 것 포함)도 함께 지운다.
   const dismissItem = (itemId: string) => setLog((previous) => previous.filter((entry) => entry.action?.item_id !== itemId));
-  return { summary: agent?.messages.find(({ id }) => id === 'summary'), log, dismissItem };
+  return { log, dismissItem };
 }
 
 // 글 속 주문 번호(#118)를 약한 회색 칸으로 감싼다. 글 내용은 바꾸지 않는다.
@@ -86,6 +77,18 @@ function withOrderIds(text: string): ReactNode {
 }
 
 function AgentMessage({ message, onRestock, busy }: { message: AgentLogEntry; onRestock: (itemId: string) => void; busy: boolean }) {
+  // 재고 알림: "무엇 · 얼마나 채울지" 굵은 줄과 "남은 양 · 급한 이유" 작은 줄, 오른쪽에 버튼.
+  if (message.title) {
+    return (
+      <li className={`agent-message stock-alert level-${message.level}${message.resolved ? ' resolved' : ''}`}>
+        <div className="stock-alert-body">
+          <p className="stock-alert-title"><strong>{message.title}</strong>{message.reorder && <span>{message.reorder}</span>}</p>
+          <p className="stock-alert-status">{message.resolved ? '해결됨' : withOrderIds(message.text)}</p>
+        </div>
+        {message.action && !message.resolved && <button type="button" className="agent-action" disabled={busy} onClick={() => onRestock(message.action!.item_id)}>{message.action.label}</button>}
+      </li>
+    );
+  }
   return (
     <li className={`agent-message level-${message.level}${message.resolved ? ' resolved' : ''}`}>
       <p>{withOrderIds(message.text)}</p>
@@ -95,6 +98,37 @@ function AgentMessage({ message, onRestock, busy }: { message: AgentLogEntry; on
         {message.action && !message.resolved && <button type="button" className="agent-action" disabled={busy} onClick={() => onRestock(message.action!.item_id)}>{message.action.label}</button>}
       </div>
     </li>
+  );
+}
+
+// 왼쪽 재고 목록. 한 칸은 "이름 · 남은 양 · 배지" 한 줄이다. 손봐야 할 재고(여유가 아닌 것)만 펼쳐 두고,
+// 여유 재고는 맨 아래 "여유 N개 보기"로 접는다. 펼침 상태는 이 브라우저 화면에만 있다.
+function StockList({ inventory }: { inventory: AgentResponse['inventory'] }) {
+  const [showRelaxed, setShowRelaxed] = useState(false);
+  const urgent = inventory.filter(({ status }) => status !== 'ok');
+  const relaxed = inventory.filter(({ status }) => status === 'ok');
+  const row = (item: AgentResponse['inventory'][number]) => (
+    <li key={item.id} className={`stock-row level-${item.level} status-${item.status}`} title={item.menus.length > 0 ? `쓰는 메뉴: ${item.menus.join(', ')}` : undefined}>
+      <span className="stock-name">{item.name_kr}</span>
+      <span className="stock-amount">{item.left}</span>
+      <span className="stock-status">{item.status_label}</span>
+    </li>
+  );
+  return (
+    <section className="stock-list" aria-labelledby="stock-title">
+      <h3 id="stock-title">재고</h3>
+      <ul tabIndex={0} aria-label="재고, 급한 순서">
+        {urgent.map(row)}
+        {relaxed.length > 0 && (
+          <li className="stock-fold">
+            <button type="button" aria-expanded={showRelaxed} onClick={() => setShowRelaxed((open) => !open)}>
+              {showRelaxed ? '여유 접기' : `여유 ${relaxed.length}개 보기`}
+            </button>
+          </li>
+        )}
+        {showRelaxed && relaxed.map(row)}
+      </ul>
+    </section>
   );
 }
 
@@ -260,15 +294,31 @@ function OrderDetail({ order, slot4, now, busy, onNote }: { order: OrderView; sl
   );
 }
 
+// 블록 안 주문 번호. 메뉴가 하나뿐이면 번호만, 둘 이상이면(part.name이 있으면) 메뉴별로 한 줄씩 번호를 묶는다.
+function TaskParts({ parts }: { parts: NonNullable<Note['parts']> }) {
+  const byMenu = new Map<string, string[]>();
+  for (const { order_id: id, name = '' } of parts) {
+    const ids = byMenu.get(name) ?? [];
+    if (!ids.includes(id)) ids.push(id);
+    byMenu.set(name, ids);
+  }
+  return (
+    <div className="task-parts">
+      {[...byMenu].map(([name, ids]) => (
+        <p key={name}>{name && <span className="task-parts-menu">{name}</span>}{ids.map((id) => <span key={id} className="order-id-chip">{id}</span>)}</p>
+      ))}
+    </div>
+  );
+}
+
 // 아래 제조 작업과 빠른 주문 카드.
 function NoteCard({ note, busy, next, onComplete }: { note: Note; busy: boolean; next?: boolean; onComplete?: () => void }) {
   return (
     <li className={`note-card${note.kind === 'task' ? ' task-card' : ''}${note.kind === 'quick' ? ' quick-note' : ''}${note.done ? ' is-done' : ''}${next ? ' is-next' : ''}`}
       style={note.kind === 'task' && note.color ? ({ '--task-color': note.color } as CSSProperties) : undefined}>
       <div className="note-body">
-        {next && <span className="task-next">다음 작업</span>}
         <p className="note-text">{withOrderIds(note.text)}</p>
-        {note.parts && <p className="task-parts">{withOrderIds(note.parts.map((part) => `${part.order_id} ${part.name ? `${part.name} ` : ''}${part.qty}${note.unit ?? '잔'}`).join(' · '))}</p>}
+        {note.parts && <TaskParts parts={note.parts} />}
         {note.detail && <p className="note-detail">{withOrderIds(note.detail)}</p>}
         {note.reason && <p className="note-detail">{withOrderIds(note.reason)}</p>}
         {note.zoro && <p className="note-zoro">{withOrderIds(note.zoro)}</p>}
@@ -356,7 +406,6 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const waitingOrders = snapshot.board.filter(({ zone }) => zone === 'flexible');
   const laneOrder = snapshot.board.find(({ zone }) => zone === 'quick');
   const fifoWaitingCount = WAITING_COUNT - (lane.enabled ? 1 : 0);
-  const grouped = fixedOrders.some(({ order_id: id }) => review.groups[id]);
   const queueCount = snapshot.board.filter(({ zone }) => zone === 'queue').length;
   const { slot4 } = snapshot;
   const aiStatus = snapshot.decision.ai_status;
@@ -368,7 +417,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
     Object.fromEntries(Array.from({ length: count }, (_, index) => [index, lineColors[`${orderId}:${index}`]]).filter(([, color]) => color));
   const nextTaskId = visibleNotes.find((note) => note.kind === 'task' && !note.done)?.id;
   const { agent, refresh: refreshAgent } = useAgent(snapshot.board.slice(0, FIXED_COUNT + WAITING_COUNT).map(({ order_id: id }) => id), snapshot.state_version);
-  const { summary: agentSummary, log: agentLog, dismissItem } = useAgentLog(agent);
+  const { log: agentLog, dismissItem } = useAgentLog(agent);
   const agentList = useRef<HTMLOListElement>(null);
   const stickToBottom = useRef(true);
   // 맨 아래를 보고 있을 때만 새 메시지를 따라 내려간다. 위로 올려 이전 대화를 읽는 중이면 그대로 둔다.
@@ -464,7 +513,6 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
               <p>재고와 주문 순서를 살펴보고 알려 줘요</p>
             </div>
           </div>
-          <p className="agent-summary" role="status">{agentSummary?.text ?? '재고와 주문을 살펴보는 중이에요.'}</p>
           <ol
             className="agent-list"
             ref={agentList}
@@ -479,25 +527,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             {agentLog.map((message) => <AgentMessage key={`${message.key}@${message.seen_at}`} message={message} onRestock={restock} busy={busy} />)}
             {agent && agentLog.length === 0 && <li className="agent-message"><p>지금은 알릴 재고나 매장 문제가 없어요.</p></li>}
           </ol>
-          {agent && agent.inventory.length > 0 && (
-            <section className="stock-list" aria-labelledby="stock-title">
-              <h3 id="stock-title">재고 소모량 <span>급한 순서, 최근 {agent.recent_minutes}분과 오늘</span></h3>
-              <ul tabIndex={0} aria-label="재고 소모량, 급한 순서">
-                {agent.inventory.map((item) => (
-                  <li key={item.id} className={`stock-row level-${item.level} status-${item.status}`} title={item.menus.length > 0 ? `쓰는 메뉴: ${item.menus.join(', ')}` : undefined}>
-                    <span className="stock-name">{item.name_kr}</span>
-                    <span className="stock-status">{item.status_label}</span>
-                    <dl className="stock-usage">
-                      <div><dt>최근 {agent.recent_minutes}분</dt><dd>{item.used_recent}</dd></div>
-                      <div><dt>오늘</dt><dd>{item.used_today}</dd></div>
-                      {item.used_today_real !== item.used_today && <div><dt>실제 주문</dt><dd>{item.used_today_real}</dd></div>}
-                    </dl>
-                    {item.note && <span className="stock-note">{withOrderIds(item.note)}</span>}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          {agent && agent.inventory.length > 0 && <StockList inventory={agent.inventory} />}
         </aside>
 
         <div className="quest-main">
@@ -508,7 +538,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             </div>
             {error && <p className="board-error" role="alert">{error}</p>}
 
-            <p className="row-label">지금 만들 주문 <span>{reviewHint(review, grouped)}</span></p>
+            <p className="row-label">지금 만들 주문</p>
             <div className="quest-row" role="list" aria-label="고정 주문 4칸" style={rowColumns(Array.from({ length: FIXED_COUNT }, (_, index) => fixedOrders[index]))}>
               {Array.from({ length: FIXED_COUNT }, (_, index) => {
                 const order = fixedOrders[index];
@@ -538,7 +568,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
               })}
             </div>
 
-            <p className="row-label">대기 주문 <span>위 주문이 끝나면 들어온 순서대로 올라가요{lane.enabled ? '. 8번은 빨리 끝나는 디저트 칸이에요' : ''}</span></p>
+            <p className="row-label">대기 주문</p>
             <div className="quest-row" role="list" aria-label={lane.enabled ? '대기 주문 3칸과 빠른 주문 칸' : '대기 주문 4칸'}
               style={rowColumns([...Array.from({ length: fifoWaitingCount }, (_, index) => waitingOrders[index]), ...(lane.enabled ? [laneOrder] : [])])}>
               {Array.from({ length: fifoWaitingCount }, (_, index) => {
@@ -573,15 +603,6 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
               <h2 id="notice-title">일머리 팁</h2>
               <span className="section-meta">{visibleNotes.filter((note) => note.kind === 'task' && !note.done).length}건 남음</span>
             </div>
-            {taskNotes.length > 0 && (
-              <ul className="group-legend" aria-label="제조 작업 색상">
-                {taskNotes.map((note) => <li key={note.id} style={{ color: note.color, borderColor: note.color }}>
-                  <i style={{ background: note.color }} aria-hidden="true" />{note.text}
-                </li>)}
-              </ul>
-            )}
-            {review.status === 'checking' && <p className="note-status">먼저 1번 주문을 만드세요. 함께 만들 메뉴를 확인 중이에요.</p>}
-            {review.status === 'unavailable' && <p className="note-status">함께 만들 메뉴를 확인하지 못했어요. 먼저 1번 주문을 만드세요.</p>}
             {visibleNotes.length > 0 ? (
               <ul className="note-list">
                 {visibleNotes.map((note) => (

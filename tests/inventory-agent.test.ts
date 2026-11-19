@@ -76,9 +76,12 @@ describe('wizard agent messages', () => {
     const messages = agentMessages(context(store, [oat(1), order(2, [line('아이스 아메리카노', 1)]), oat(3), oat(4)]));
     const message = messages.find(({ id }) => id === 'stock-oat_milk')!;
     assert.equal(message.level, 'danger');
-    assert.match(message.text, /^\d번 주문 #\d부터 오트밀크가 모자라요/);
+    // 짧은 알림: 굵은 줄은 "오트밀크 1L 팩 6개", 작은 줄은 "남은 양 · 어느 주문부터 부족"
+    assert.equal(message.title, '오트밀크');
+    assert.equal(message.reorder, '1L 팩 6개');
+    assert.match(message.text, /^\d+ml 남음 · #\d부터 부족$/);
     assert.equal(message.action?.item_id, 'oat_milk');
-    assert.match(message.action!.label, /채웠어요$/);
+    assert.equal(message.action!.label, '채웠어요');
     assert.equal(messages[0].id, 'summary');
     assert.ok(messages.length <= 5);
   });
@@ -90,7 +93,7 @@ describe('wizard agent messages', () => {
     now += 60_000;
     const milk = agentMessages(context(store, []), Infinity).find(({ id }) => id === 'stock-milk');
     assert.ok(milk, 'milk message');
-    assert.match(milk.text, /분 뒤 우유가 위험 단계예요|우유가 .* 주의 단계예요|우유가 .* 위험 단계예요/);
+    assert.match(milk.text, /^\S+ 남음 · (약 \d+분 뒤 위험|주의|위험)$/);
   });
 
   it('shows equipment and store incidents but not rider events', () => {
@@ -118,6 +121,7 @@ describe('wizard agent messages', () => {
     const views = inventoryViews(context(store, [coldBrew(1), coldBrew(2), coldBrew(3)]));
     assert.equal(views.length, 32);
     assert.deepEqual([views[0].id, views[0].status], ['cold_brew', 'short']);
+    assert.match(views[0].left, /^[\d.]+m?l?L? 남음$/);
     assert.match(views[0].note, /^\d번 주문 #\d부터 모자람, 콜드브루 기준 \d+잔 분량$/);
     assert.ok(views[0].menus.includes('콜드브루'));
     const ranks = views.map(({ status }) => ['short', 'danger', 'board_danger', 'soon', 'warn', 'ok'].indexOf(status));

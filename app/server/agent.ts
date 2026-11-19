@@ -11,6 +11,9 @@ export type AgentMessage = {
   topic: string;
   text: string;
   at?: string;
+  // 재고 알림만 짧게 보여 준다: title(무엇) + reorder(얼마나 채울지)가 굵은 줄, text는 "남은 양 · 급한 이유" 한 줄이다.
+  title?: string;
+  reorder?: string;
   action?: { kind: 'restock'; item_id: string; label: string };
 };
 
@@ -21,6 +24,8 @@ export type InventoryView = {
   level: InventoryLevel;
   status: StockStatus;
   status_label: string;
+  // 화면 한 줄에 보이는 남은 양. 위 재고 알림과 같은 말("100ml 남음")을 쓴다.
+  left: string;
   used_recent: string;
   used_today: string;
   used_today_real: string;
@@ -121,27 +126,20 @@ function compareStock(a: StockAssessment, b: StockAssessment): number {
 
 function stockMessage(stock: StockAssessment, orders: OrderView[]): AgentMessage | undefined {
   const { item } = stock;
-  const name = withSubjectParticle(item.name_kr);
-  const left = formatAmount(item.on_hand, item.unit);
-  // 바리스타가 실제로 채운 뒤 누르는 버튼이다. 누르면 주문 단위(reorder_qty)만큼 재고가 늘어난다.
-  const action = { kind: 'restock' as const, item_id: item.id, label: `${item.reorder_label} 채웠어요` };
-  const id = `stock-${item.id}`;
+  const left = `${formatAmount(item.on_hand, item.unit)} 남음`;
+  // 바리스타가 실제로 채운 뒤 누르는 버튼이다. 누르면 주문 단위(reorder_qty)만큼 재고가 늘어난다. 얼마나 채우는지는 굵은 줄(reorder)에 있다.
+  const base = { id: `stock-${item.id}`, title: item.name_kr, reorder: item.reorder_label, action: { kind: 'restock' as const, item_id: item.id, label: '채웠어요' } };
   switch (stock.status) {
     case 'short':
-      return { id, level: 'danger', topic: `${item.name_kr} 부족`, action,
-        text: `${orderName(orders, stock.shortAt!)}부터 ${name} 모자라요. 지금 ${left} 남았는데 보드 주문에는 ${formatAmount(stock.need, item.unit)} 필요해요.` };
+      return { ...base, level: 'danger', topic: `${item.name_kr} 부족`, text: `${left} · ${orders[stock.shortAt!].order_id}부터 부족` };
     case 'danger':
-      return { id, level: 'danger', topic: `${item.name_kr} 위험`, action,
-        text: `${name} ${left} 남아 위험 단계예요. ${item.reorder_label} 단위로 채워 주세요.` };
+      return { ...base, level: 'danger', topic: `${item.name_kr} 위험`, text: `${left} · 위험` };
     case 'board_danger':
-      return { id, level: 'warn', topic: `${item.name_kr} 주의`, action,
-        text: `${orderName(orders, stock.dangerAt!)}까지 만들면 ${name} 위험 단계로 내려가요. 지금 ${left} 남았어요.` };
+      return { ...base, level: 'warn', topic: `${item.name_kr} 주의`, text: `${left} · ${orders[stock.dangerAt!].order_id}까지 만들면 위험` };
     case 'soon':
-      return { id, level: 'warn', topic: `${item.name_kr} 소모 속도`, action,
-        text: `지금 속도(분당 ${formatAmount(stock.rate, item.unit)})면 약 ${Math.max(1, Math.round(stock.minutesToDanger!))}분 뒤 ${name} 위험 단계예요.` };
+      return { ...base, level: 'warn', topic: `${item.name_kr} 소모 속도`, text: `${left} · 약 ${Math.max(1, Math.round(stock.minutesToDanger!))}분 뒤 위험` };
     case 'warn':
-      return { id, level: 'warn', topic: `${item.name_kr} 주의`, action,
-        text: `${name} ${left} 남아 주의 단계예요. 여유 있을 때 채워 두세요.` };
+      return { ...base, level: 'warn', topic: `${item.name_kr} 주의`, text: `${left} · 주의` };
     default:
       return undefined;
   }
@@ -197,6 +195,7 @@ export function inventoryViews(ctx: Pick<AgentContext, 'items' | 'usage' | 'orde
         level: inventoryLevel(item),
         status: stock.status,
         status_label: statusLabels[stock.status],
+        left: `${formatAmount(item.on_hand, item.unit)} 남음`,
         used_recent: formatAmount(usage.recent, item.unit),
         used_today: formatAmount(usage.today, item.unit),
         used_today_real: formatAmount(usage.todayReal, item.unit),
