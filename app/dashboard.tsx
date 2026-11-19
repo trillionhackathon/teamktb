@@ -106,9 +106,9 @@ function OrderFlags({ order }: { order: OrderView }) {
   return <div className="card-flags">{flags.map(({ text, tone }) => <p key={text} className={`card-flag tone-${tone}`}>{text}</p>)}</div>;
 }
 
-// 4번 칸 표시: "확인 중"(룰 선택을 먼저 넣고 Zoro 답을 기다림), "Zoro 0.78", "룰".
+// 4번 칸 표시: "Zoro 고르는 중"(4번 칸이 빈 채로 Zoro 답을 기다림), "Zoro 0.78", "룰"(Zoro가 답하지 못함).
 function slot4Label(slot4: Slot4Info): string {
-  if (slot4.status === 'checking') return '확인 중';
+  if (slot4.status === 'checking') return 'Zoro 고르는 중';
   if (slot4.source === 'zoro') return `Zoro ${(slot4.confidence ?? 0).toFixed(2)}`;
   return '룰';
 }
@@ -312,8 +312,11 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
               {Array.from({ length: FIXED_COUNT }, (_, index) => {
                 const order = fixedOrders[index];
                 const slot = index + 1;
+                if (!order && slot === FIXED_COUNT && slot4?.status === 'checking') {
+                  return <div key={slot} role="listitem" className="quest-card empty picking"><span className="slot-number">{slot}</span><p className="card-empty">Zoro가 4번을 고르는 중</p></div>;
+                }
                 if (!order) return <div key={slot} role="listitem" className="quest-card empty"><span className="slot-number">{slot}</span><p className="card-empty">빈 칸</p></div>;
-                const picked = slot === FIXED_COUNT && slot4?.order_id === order.order_id ? slot4 : undefined;
+                const picked = slot === FIXED_COUNT && slot4?.status === 'final' && slot4.order_id === order.order_id ? slot4 : undefined;
                 return (
                   <article key={slot} role="listitem" className={`quest-card fixed${index === 0 ? ' head' : ''}${picked ? ' picked' : ''}`} aria-label={`${slot}번 칸 ${order.order_id} 주문`}>
                     <div className="card-body" key={order.order_id}>

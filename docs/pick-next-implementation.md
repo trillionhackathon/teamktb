@@ -13,7 +13,7 @@
 | 5~8번 순서 | 들어온 순서를 유지한다. 4번으로 가는 주문만 움직인다. 새 주문은 맨 뒤에 붙는다 |
 | 작업창 | 1~4번을 같이 보고 다음 완료까지 할 일을 순서대로 쓴다. 마지막 줄은 "주문 ○ 완료" |
 | 요청사항 | 들어온 순간 카드 내용을 고친다. 1~4번 주문이면 작업창도 다시 쓴다. 5~8번이면 다음 완료 때 반영된다 |
-| 역할 | 숫자는 코드가 계산하고, Zoro는 사장님 기준을 보고 고르기만 한다. 확신이 0.7보다 낮거나 실패하면 룰이 고른다 |
+| 역할 | 숫자는 코드가 계산하고, Zoro는 사장님 기준을 보고 고르기만 한다. Zoro가 답하면 항상 Zoro가 고른 주문을 쓰고, Zoro가 답하지 못할 때만 룰이 고른다 |
 
 이벤트별로 바뀌는 것:
 
@@ -35,7 +35,7 @@
   → teamktb → aiserver: POST /ai/pick-next
   → aiserver → Zoro: POST /v1/systemone (choice 질문 1개)
   → Zoro: 후보별 확률
-  → aiserver: 1등 ≥ 0.7이면 그 주문, 아니면 룰 선택
+  → aiserver: Zoro 1등 주문(Zoro가 답하지 못하면 룰 선택)
   → teamktb: 검증 후 4번 확정(필요하면 교체), 밀린 횟수 기록, 작업창 다시 씀, SSE 전송
 ```
 
@@ -335,7 +335,7 @@ export function buildWorkWindow(top4: Order[], catalog: MenuCatalog): WorkStep[]
 | 응답 필드 | 뜻 |
 | --- | --- |
 | `pick` | 4번에 넣을 주문. 항상 `candidates` 안의 id |
-| `source` | `zoro`: Zoro 1등이 임계값 이상. `rule`: 확신이 낮거나 Zoro 실패라 `rule_pick`을 돌려줌 |
+| `source` | `zoro`: Zoro가 고름. `rule`: Zoro 실패(또는 `PICK_THRESHOLD`보다 낮은 확신)라 `rule_pick`을 돌려줌 |
 | `confidence` | Zoro 1등 확률. Zoro가 실패했으면 `1.0`(룰) |
 | `scores` | 후보별 Zoro 확률. Zoro가 실패했으면 빈 객체 |
 | `fallback` | Zoro 호출 자체가 실패했으면 `true` |
@@ -343,7 +343,7 @@ export function buildWorkWindow(top4: Order[], catalog: MenuCatalog): WorkStep[]
 파이프라인:
 
 ```python
-PICK_THRESHOLD = float(os.getenv("PICK_THRESHOLD", "0.7"))
+PICK_THRESHOLD = float(os.getenv("PICK_THRESHOLD", "0"))  # 0: Zoro가 답하면 항상 Zoro 1등
 
 def build_state(req: PickRequest) -> dict:
     return {

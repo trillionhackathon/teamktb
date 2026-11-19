@@ -18,7 +18,8 @@ import type { AiClient } from './aiserver.ts';
 // 저장 위치는 Next.js 서버 메모리다. 서버를 다시 띄우면 기본 시나리오로 돌아간다.
 //
 // 보드 순서는 고정칸(1~4번) 완료 때만 바뀐다. 2~4번을 당기고, 대기 5~8번 중 하나를 골라 4번에 넣는다.
-// 룰 선택을 먼저 넣고("확인 중"), aiserver /ai/pick-next(Zoro) 답이 타임아웃 안에 오면 바꾼다.
+// 4번은 aiserver /ai/pick-next(Zoro)가 고른다. 답이 올 때까지 4번은 비워 두고("Zoro 고르는 중"),
+// 룰 선택은 Zoro가 답하지 못할 때(aiserver 없음·타임아웃·오류)와 후보가 하나뿐일 때만 쓴다.
 // 새 주문은 맨 뒤에 붙기만 하고, 요청사항·매장 이벤트는 카드 내용만 바꾼다.
 
 export type CreateOrderInput = {
@@ -223,13 +224,16 @@ export class OrderStore {
       order.status = 'in_progress';
       order.started_at = now;
     } else {
+      // Zoro가 4번을 고르는 사이 고정 주문이 또 끝나면, 비어 있던 4번은 룰 선택으로 먼저 채우고 당긴다.
+      if (this.isPicking() && this.state.board.indexOf(orderId) >= 0 && this.state.board.indexOf(orderId) < this.lockedShown()) this.settlePendingPick();
       order.status = 'done';
       order.completed_at = now;
+      const locked = this.lockedShown();
       const index = this.state.board.indexOf(orderId);
       if (index >= 0) this.state.board.splice(index, 1);
       this.markWindowDone(orderId);
       // 고정칸(1~4번)이 비면 2~4번이 당겨지고 4번을 새로 고른다. 1번이 아닌 고정 주문이 먼저 끝나도(라이더가 먼저 와서 가져감) 같다.
-      if (index >= 0 && index < this.deps.config.lockedCount) this.fillSlot4();
+      if (index >= 0 && index < locked) this.fillSlot4();
     }
     this.commit();
     return { order: this.view(order) };
@@ -313,12 +317,18 @@ export class OrderStore {
     const { config } = this.deps;
     const now = this.now();
     const etas = boardEtas(this.state.board, this.state.orders, now);
-    const board = this.state.board.map((id, index): OrderView => ({
-      ...this.view(this.state.orders.get(id)!),
-      slot: index + 1,
-      zone: index < config.lockedCount ? 'locked' : index < config.visibleCount ? 'flexible' : 'queue',
-      eta_seconds: etas.get(id),
-    }));
+    // Zoro가 4번을 고르는 동안 4번 칸은 비어 있고, 대기 주문은 5번부터 보인다.
+    const locked = this.lockedShown();
+    const gap = config.lockedCount - locked;
+    const board = this.state.board.map((id, index): OrderView => {
+      const slot = index < locked ? index + 1 : index + 1 + gap;
+      return {
+        ...this.view(this.state.orders.get(id)!),
+        slot,
+        zone: index < locked ? 'locked' : slot <= config.visibleCount ? 'flexible' : 'queue',
+        eta_seconds: etas.get(id),
+      };
+    });
     const all = [...this.state.orders.values()];
     const scenario = findScenario(this.state.scenarioId);
     const tipIds = new Set(this.state.ruleTips.map(({ id }) => id));
@@ -341,8 +351,8 @@ export class OrderStore {
       scenarios: scenarios.map(({ id, title }) => ({ id, title })),
       availability: this.availability(),
       config: { lockedCount: config.lockedCount, visibleCount: config.visibleCount },
-      // 4번 칸에 있는 주문의 고르기 정보만 보낸다(다음 완료로 3번이 되면 빠진다).
-      slot4: slot4 && this.state.board[config.lockedCount - 1] === slot4.order_id ? structuredClone(slot4) : undefined,
+      // Zoro가 고르는 중이거나, 4번 칸에 있는 주문의 고르기 정보만 보낸다(다음 완료로 3번이 되면 빠진다).
+      slot4: slot4 && (slot4.status === 'checking' || this.state.board[config.lockedCount - 1] === slot4.order_id) ? structuredClone(slot4) : undefined,
       work_window: structuredClone(this.state.workWindow),
     };
   }
@@ -401,11 +411,25 @@ export class OrderStore {
 
   // ---- 4번 칸 고르기 ----
 
+  // Zoro가 4번을 고르는 중인지. 이때 4번 칸은 비어 있고 보드의 고정 주문은 1~3번뿐이다.
+  private isPicking(): boolean {
+    return this.state.slot4?.status === 'checking';
+  }
+
+  // 지금 화면 고정칸(1~4번)에 들어 있는 주문 수. Zoro가 고르는 중이면 4번이 비어 있어 하나 적다.
+  private lockedShown(): number {
+    return this.deps.config.lockedCount - (this.isPicking() ? 1 : 0);
+  }
+
+  // 후보가 아직 4번에 넣을 수 있는 상태인지(그 사이 완료되거나 빠지지 않았는지).
+  private canPlace(id: string): boolean {
+    return this.state.board.includes(id) && this.state.orders.get(id)?.status === 'waiting';
+  }
+
   // 당겨진 뒤의 보드에서 4번을 채운다. 후보는 기존 5~8번(지금은 4~7번 칸)의 대기 주문 중 만들 수 있는 주문이다.
+  // 4번은 Zoro가 고른다. Zoro 답이 올 때까지 4번은 비워 두고("Zoro 고르는 중"), 룰 선택은 Zoro가 답하지 못할 때만 쓴다.
   private fillSlot4(): void {
     const L = this.deps.config.lockedCount;
-    // Zoro 답보다 다음 완료가 먼저 왔으면 그때 넣은 룰 선택으로 확정하고 밀린 횟수를 센다.
-    if (this.state.slot4?.status === 'checking') this.countOvertaken(this.pickCandidates, this.state.slot4.order_id);
     this.state.slot4 = undefined;
     this.pickCandidates = [];
     const seq = ++this.pickSeq;
@@ -420,15 +444,31 @@ export class OrderStore {
     const facts = buildFacts(locked, candidates, this.factContext());
     const rule = rulePickNext(candidates, this.state.orders, facts, this.rules.limits);
     const factLines = Object.fromEntries([...facts].map(([id, fact]) => [id, fact.line]));
-    // 후보가 하나면 고를 것이 없어 Zoro에 묻지 않는다.
+    // 후보가 하나면 고를 것이 없어 Zoro에 묻지 않는다. aiserver가 없으면 룰로 채운다.
     const ai = candidates.length > 1 ? this.deps.ai : undefined;
-    this.placeAt4(rule, { source: 'rule', status: ai ? 'checking' : 'final', rule_pick: rule, facts: factLines });
-    if (ai) {
-      this.pickCandidates = candidates;
-      this.pickPending = this.askZoro(ai, seq, locked, candidates, facts, rule);
-    } else {
+    if (!ai) {
+      this.placeAt4(rule, { source: 'rule', status: 'final', rule_pick: rule, facts: factLines });
       this.countOvertaken(candidates, rule);
+      return;
     }
+    this.state.slot4 = { order_id: '', source: 'zoro', status: 'checking', rule_pick: rule, facts: factLines };
+    this.pickCandidates = candidates;
+    this.pickPending = this.askZoro(ai, seq, locked, candidates, facts, rule);
+  }
+
+  // Zoro 답을 기다리는 중에 고정 주문이 또 끝나면 기다리던 4번을 룰 선택으로 채운다. 늦게 온 Zoro 답은 버린다.
+  private settlePendingPick(): void {
+    const current = this.state.slot4!;
+    const candidates = this.pickCandidates;
+    this.pickSeq += 1;
+    this.pickCandidates = [];
+    const pick = this.canPlace(current.rule_pick) ? current.rule_pick : candidates.find((id) => this.canPlace(id));
+    if (!pick) {
+      this.state.slot4 = undefined;
+      return;
+    }
+    this.placeAt4(pick, { ...current, source: 'rule', status: 'final' });
+    this.countOvertaken(candidates, pick);
   }
 
   // pick을 4번 칸에 넣는다. 나머지 대기 주문은 들어온 순서로 둔다(4번으로 가는 주문만 움직인다).
@@ -458,20 +498,24 @@ export class OrderStore {
     });
     const res = await ai.pickNext(request);
     if (seq !== this.pickSeq) return;                                        // 기다리는 사이 또 완료됐으면 버린다
-    const L = this.deps.config.lockedCount;
     const current = this.state.slot4;
-    if (this.state.board[L - 1] !== rule || current?.status !== 'checking') return;   // 그 사이 4번이 바뀌었으면 버린다
-    if (res.ok && res.data.source === 'zoro' && candidates.includes(res.data.pick)) {
-      const info = { ...current, source: 'zoro' as const, status: 'final' as const, confidence: res.data.confidence, scores: res.data.scores };
-      if (res.data.pick !== rule) this.placeAt4(res.data.pick, info);
-      else this.state.slot4 = { ...info, order_id: rule };
-    } else {
-      // Zoro 실패, 확신 낮음(source: rule), 후보 밖 id → 룰 선택 그대로
-      this.state.slot4 = { ...current, status: 'final', ...(res.ok ? { confidence: res.data.confidence, scores: res.data.scores } : {}) };
-      if (!res.ok) console.warn(`[order-store] pick-next fell back to rule: ${res.error}`);
-    }
+    if (current?.status !== 'checking') return;
+    const usable = (id: string) => candidates.includes(id) && this.canPlace(id);
     this.pickCandidates = [];
-    this.countOvertaken(candidates, this.state.board[L - 1]);
+    if (res.ok && res.data.source === 'zoro' && usable(res.data.pick)) {
+      this.placeAt4(res.data.pick, { ...current, source: 'zoro', status: 'final', confidence: res.data.confidence, scores: res.data.scores });
+    } else {
+      // Zoro가 답하지 못함(연결 실패·타임아웃·형식 오류), 후보 밖 id, 그 사이 완료된 주문 → 룰 선택(그것도 없으면 남은 후보 중 먼저 온 주문)
+      const fallback = usable(rule) ? rule : candidates.find(usable);
+      if (!res.ok) console.warn(`[order-store] pick-next fell back to rule: ${res.error}`);
+      if (!fallback) {
+        this.state.slot4 = undefined;
+        this.commit({ decide: false });
+        return;
+      }
+      this.placeAt4(fallback, { ...current, source: 'rule', status: 'final', ...(res.ok ? { confidence: res.data.confidence, scores: res.data.scores } : {}) });
+    }
+    this.countOvertaken(candidates, this.state.board[this.deps.config.lockedCount - 1]);
     this.commit({ decide: false });
   }
 
@@ -492,7 +536,8 @@ export class OrderStore {
   // ---- 작업창 ----
 
   private rebuildWorkWindow(): void {
-    const top4 = this.state.board.slice(0, this.deps.config.lockedCount).map((id) => this.state.orders.get(id)!);
+    // Zoro가 4번을 고르는 중이면 1~3번만 본다. 4번이 정해지면 다시 쓴다.
+    const top4 = this.state.board.slice(0, this.lockedShown()).map((id) => this.state.orders.get(id)!);
     this.state.workWindow = buildWorkWindow(top4, this.deps.catalog, (order) => this.blockedReason(order));
   }
 
