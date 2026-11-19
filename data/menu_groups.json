@@ -1,0 +1,117 @@
+{
+  "note": "Zoro-1이 레시피 단계와 장비를 읽고 모든 메뉴 짝(595개)을 비교해 묶은 계열 표 초안. 계열 이름은 사람이 붙였다. overrides에 menu id: 계열 id를 적으면 그 값이 우선한다. 팀 확인이 필요하다.",
+  "question": "두 음료를 연달아 만들면 같은 장비와 같은 작업을 이어서 쓸 수 있어 효율적인가? 만드는 순서가 거의 같고 같은 장비를 쓰면 예. 장비나 작업이 많이 다르면 아니오.",
+  "threshold": 0.5,
+  "model": "Zoro-1",
+  "overrides": {},
+  "menu_group": {
+    "affogato": "g1",
+    "cafe_mocha_ice": "g1",
+    "cappuccino": "g1",
+    "caramel_macchiato_ice": "g1",
+    "einspanner": "g1",
+    "espresso": "g1",
+    "flat_white": "g1",
+    "hot_americano": "g1",
+    "iced_americano": "g1",
+    "iced_latte": "g1",
+    "latte": "g1",
+    "vanilla_latte_ice": "g1",
+    "chocolate_latte_ice": "g2",
+    "cold_brew": "g2",
+    "grapefruit_ade": "g2",
+    "green_tea_latte_ice": "g2",
+    "iced_yuja_tea": "g2",
+    "lemon_ade": "g2",
+    "orange_juice": "g2",
+    "peach_iced_tea": "g2",
+    "strawberry_latte_ice": "g2",
+    "chamomile_hot": "g3",
+    "earl_grey_hot": "g3",
+    "iced_chamomile": "g3",
+    "iced_earl_grey": "g3",
+    "peppermint_hot": "g3",
+    "yuja_tea_hot": "g3",
+    "blueberry_smoothie": "g4",
+    "choco_chip_frappe": "g4",
+    "green_tea_frappe": "g4",
+    "mango_smoothie": "g4",
+    "strawberry_smoothie": "g4",
+    "ice_cream_choco": "g5",
+    "ice_cream_vanilla": "g5",
+    "hot_chocolate": "g6"
+  },
+  "groups": {
+    "g1": {
+      "name_kr": "에스프레소 음료",
+      "color": "#e07a5f",
+      "menus": [
+        "affogato",
+        "cafe_mocha_ice",
+        "cappuccino",
+        "caramel_macchiato_ice",
+        "einspanner",
+        "espresso",
+        "flat_white",
+        "hot_americano",
+        "iced_americano",
+        "iced_latte",
+        "latte",
+        "vanilla_latte_ice"
+      ]
+    },
+    "g2": {
+      "name_kr": "차갑게 붓는 음료",
+      "color": "#3d85c6",
+      "menus": [
+        "chocolate_latte_ice",
+        "cold_brew",
+        "grapefruit_ade",
+        "green_tea_latte_ice",
+        "iced_yuja_tea",
+        "lemon_ade",
+        "orange_juice",
+        "peach_iced_tea",
+        "strawberry_latte_ice"
+      ]
+    },
+    "g3": {
+      "name_kr": "차",
+      "color": "#81b29a",
+      "menus": [
+        "chamomile_hot",
+        "earl_grey_hot",
+        "iced_chamomile",
+        "iced_earl_grey",
+        "peppermint_hot",
+        "yuja_tea_hot"
+      ]
+    },
+    "g4": {
+      "name_kr": "블렌더 음료",
+      "color": "#c77dff",
+      "menus": [
+        "blueberry_smoothie",
+        "choco_chip_frappe",
+        "green_tea_frappe",
+        "mango_smoothie",
+        "strawberry_smoothie"
+      ]
+    },
+    "g5": {
+      "name_kr": "아이스크림",
+      "color": "#f2a900",
+      "menus": [
+        "ice_cream_choco",
+        "ice_cream_vanilla"
+      ]
+    },
+    "g6": {
+      "name_kr": "핫초코",
+      "color": "#6d6875",
+      "menus": [
+        "hot_chocolate"
+      ]
+    }
+  }
+}

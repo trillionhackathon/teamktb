@@ -4,6 +4,7 @@ import { ownerRules as defaultOwnerRules } from '../domain/catalog-data.ts';
 import { interpretEvent } from '../domain/events.ts';
 import { buildFacts, lockedLine, type Fact } from '../domain/facts.ts';
 import {
+  findDrink,
   lineName, lineUsesEquipment, maxOrderCups, normalizeLine, optionNames, orderPrice, orderWorkSeconds, stockNeeded, type MenuCatalog,
 } from '../domain/menu.ts';
 import { defaultScenarioId, findScenario, scenarios, type SignalPatch } from '../domain/scenarios.ts';
@@ -135,6 +136,7 @@ export class OrderStore {
       scenarioId: scenario.id,
       workWindow: [],
     };
+    this.reorderWaiting();
     this.commit();
     return undefined;
   }
@@ -205,6 +207,7 @@ export class OrderStore {
     this.state.orders.set(orderId, order);
     // 새 주문은 맨 뒤 빈칸에 붙는다. 5~8번은 들어온 순서를 유지하고, 8칸이 차면 화면 밖 대기열로 간다.
     this.state.board.push(orderId);
+    this.reorderWaiting();
     if (input.request_id) this.state.requestIds.set(input.request_id, orderId);
     inventory.coffee_beans_shots_left -= needed.espresso_shot;
     inventory.strawberry_servings_left = Math.round((inventory.strawberry_servings_left - needed.strawberry_servings) * 100) / 100;
@@ -475,12 +478,33 @@ export class OrderStore {
   private placeAt4(pick: string, info: Omit<Slot4Info, 'order_id'>): void {
     const L = this.deps.config.lockedCount;
     const rest = this.state.board.filter((id) => id !== pick);
-    const waiting = rest.slice(L - 1).sort((a, b) => this.arrival(a) - this.arrival(b));
+    const waiting = this.orderWaiting(rest.slice(L - 1));
     this.state.board = [...rest.slice(0, L - 1), pick, ...waiting];
     this.state.slot4 = { ...info, order_id: pick };
   }
 
   // 들어온 순서. 접수 시각이 같으면 주문 번호 순서다.
+  // 빠른 메뉴 끌어오기(코드 규칙). 대기 주문은 접수순이 기본이고, 제조 시간이 quick_menu_sec 이하인 주문은
+  // 대기칸 앞 quickSlots칸까지 먼저 온 순서로 올린다(화면 밖 대기열에 있어도 올라온다). 4번은 여전히 5~8번 중 Zoro가 고른다.
+  // 앞으로 올릴 수 있는 칸 수를 제한해서, 오래 걸리는 주문이 빠른 메뉴 때문에 계속 밀리지 않게 한다.
+  private isQuick(id: string): boolean {
+    const order = this.state.orders.get(id);
+    const limit = this.deps.config.quickMenuSec;
+    return !!order && limit !== undefined && order.status === 'waiting' && !this.isBlocked(order) && order.remaining_work_seconds <= limit;
+  }
+
+  private orderWaiting(ids: string[]): string[] {
+    const byArrival = [...ids].sort((a, b) => this.arrival(a) - this.arrival(b));
+    const quick = byArrival.filter((id) => this.isQuick(id)).slice(0, this.deps.config.quickSlots ?? 0);
+    return [...quick, ...byArrival.filter((id) => !quick.includes(id))];
+  }
+
+  // 고정칸 뒤(대기칸 + 화면 밖 대기열)의 순서를 orderWaiting으로 다시 맞춘다. 고정칸은 건드리지 않는다.
+  private reorderWaiting(): void {
+    const start = this.lockedShown();
+    this.state.board = [...this.state.board.slice(0, start), ...this.orderWaiting(this.state.board.slice(start))];
+  }
+
   private arrival(id: string): number {
     return Date.parse(this.state.orders.get(id)!.received_at) * 1000 + (Number(id.replace(/[^0-9]/g, '')) % 1000);
   }
@@ -566,7 +590,7 @@ export class OrderStore {
       source: order.source,
       source_label: sourceLabels[order.source],
       status: order.status,
-      items: order.menu_items.map((line) => ({ name: lineName(catalog, line), qty: line.qty, options: optionNames(catalog, line.options) })),
+      items: order.menu_items.map((line) => ({ name: lineName(catalog, line), qty: line.qty, options: optionNames(catalog, line.options), group: findDrink(catalog, line.menu)?.group })),
       request_note: order.request_note,
       rider_status: order.rider_status,
       rider_label: order.rider_status ? riderLabels[order.rider_status] : undefined,

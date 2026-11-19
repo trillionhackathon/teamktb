@@ -4,7 +4,8 @@ import type { Order, OwnerLimits } from './types.ts';
 // 2x4 KDS 보드(data/cafe_db.json kds_board). board는 진행 중인 주문의 칸 순서다.
 // 1~4번은 고정, 5~8번은 들어온 순서로 대기, 9번째부터는 화면 밖 대기열이다.
 // 1번(고정칸) 완료 때만 2~4번을 당기고 5~8번 중 하나를 골라 4번에 넣는다(order-store.ts fillSlot4).
-export type BoardConfig = { lockedCount: number; visibleCount: number };
+// quickMenuSec: 이 시간 이하로 만드는 주문은 대기칸 앞으로 올린다. quickSlots: 대기칸 중 앞 몇 칸까지. 둘 중 하나라도 없으면 끈다.
+export type BoardConfig = { lockedCount: number; visibleCount: number; quickMenuSec?: number; quickSlots?: number };
 
 // cafe_db.json output_example(/ai/decide)의 이동 사유를 화면 말로 바꾼다.
 export const moveReasonLabels: Record<string, string> = {
