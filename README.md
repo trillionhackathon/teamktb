@@ -58,7 +58,7 @@ npm run dev
 - 주문 저장소는 상태가 바뀔 때마다 보드 10칸을 aiserver `POST /ai/decide`로 보내고, 응답이 1~5번 고정칸을 바꾸지 않고 보드에 있는 주문만 담았을 때 6~10번 순서를 적용합니다. 판단 중 상태가 바뀌면 늦게 온 응답은 버립니다(INV-04).
 - 상황 입력은 `POST /ai/operator-input` 분류 결과를 이벤트에 함께 기록합니다.
 - `AISERVER_URL`이 없거나 응답하지 않으면 `cafe_db.json` `fallback_rules`(FIFO + 라이더 도착 우선)로 정렬하고 `규칙 판단 · AI 서버 미응답`으로 표시합니다(INV-07).
-- 요청·응답 형식은 [app/ai/contract.ts](./app/ai/contract.ts)에 aiserver `app/schemas.py`와 맞춰 두었고, aiserver README 초안의 `feed` 형식도 받습니다.
+- 요청·응답 형식은 [app/ai/contract.ts](./app/ai/contract.ts)에 aiserver `app/schemas.py`와 맞춰 두었고, aiserver README 초안의 `feed` 형식도 받습니다. 필드 설명·예시·폴백 규칙·미결 항목은 [docs/aiserver-api.md](./docs/aiserver-api.md)에 정리했습니다.
 
 ## API
 
