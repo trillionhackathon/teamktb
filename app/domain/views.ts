@@ -1,4 +1,4 @@
-import type { MenuGroup, Channel, Decision, OrderSource, OrderStatus, RiderStatus, Signals, Slot4Info, StoreEvent, Tip, WorkStep } from './types.ts';
+import type { BoardReview, MenuGroup, Note, Channel, Decision, OrderSource, OrderStatus, RiderStatus, Signals, Slot4Info, StoreEvent, Tip, WorkStep } from './types.ts';
 
 // 서버가 화면으로 보내는 스냅샷. 화면은 메뉴 원본(recipe.json) 없이 이 값만으로 그린다.
 export type OrderItemView = { name: string; qty: number; options: string[]; group?: MenuGroup };
@@ -54,6 +54,10 @@ export type BoardSnapshot = {
   slot4?: Slot4Info;
   // 1번 완료까지 할 일. 마지막 줄은 "주문 #101 완료"
   work_window: WorkStep[];
+  // Zoro가 맨 앞 4건에서 묶은 주문(하이라이트 색)
+  review: BoardReview;
+  // 아래 자연어 칸 카드(같이 처리해요, 빠른 주문 팝업)
+  notes: Note[];
 };
 
 export const channelLabels: Record<Channel, string> = { 'dine-in': '매장', takeout: '포장', delivery: '배달' };

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
-import { parseDecideResult, parseIntentResult, parsePickResult, toAiRiderStatus, toAiStoreState, toPickRequest, type AiPickRequest } from '../app/ai/contract.ts';
+import { parseDecideResult, parseIntentResult, parsePickResult, parseGroupResult, toAiRiderStatus, toAiStoreState, toPickRequest, type AiPickRequest } from '../app/ai/contract.ts';
 import { moveReasonLabels } from '../app/domain/board.ts';
 import { boardConfig, menuCatalog, ownerRules } from '../app/domain/catalog-data.ts';
 import type { Fact } from '../app/domain/facts.ts';
@@ -208,5 +208,14 @@ describe('aiserver integration', { skip: !process.env.AISERVER_URL && 'AISERVER_
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...pickRequest, rule_pick: '#999' }),
     });
     assert.equal(bad.status, 422);
+  });
+});
+
+describe('group contract', () => {
+  it('accepts the aiserver GroupResult and rejects malformed values', () => {
+    assert.deepEqual(parseGroupResult({ groups: { '#101': 1 }, fallback: false }), { groups: { '#101': 1 }, fallback: false });
+    assert.deepEqual(parseGroupResult({}), { groups: {}, fallback: false });
+    assert.equal(parseGroupResult({ groups: { '#101': 'a' } }), undefined);
+    assert.equal(parseGroupResult({ groups: {}, fallback: 'no' }), undefined);
   });
 });

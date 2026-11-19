@@ -19,6 +19,7 @@ export type MenuDrink = {
   is_mvp: boolean;
   espresso_shots: number;
   strawberry_servings: number;
+  steps?: string[];       // 만드는 순서(recipe.json). Zoro가 비슷한 메뉴를 알아볼 때 읽는다
   group?: MenuGroup;      // 비슷한 계열(data/menu_groups.json). 같은 계열은 연달아 만들면 준비를 나눠 쓴다
 };
 
