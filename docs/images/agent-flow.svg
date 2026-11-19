@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 700" width="1280" height="700" font-family="'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',system-ui,sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5f7891"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="700" fill="#0e1620"/>
+
+  <text x="40" y="48" fill="#e6edf5" font-size="24" font-weight="700">일머리 — 배달 메모 한 줄이 주문을 바꾸는 과정</text>
+  <text x="40" y="74" fill="#8b9aad" font-size="14">Zoro-1은 문장의 뜻과 확신만 답하고, 반영·경고·보류는 코드가 확신에 기준선을 대서 정한다</text>
+
+  <!-- 1. 입력 -->
+  <text x="40" y="118" fill="#6f8296" font-size="12" font-weight="700" letter-spacing="1">① 입력 · 배달앱</text>
+  <rect x="40" y="130" width="262" height="152" rx="12" fill="#16202c" stroke="#243040"/>
+  <text x="58" y="157" fill="#e6edf5" font-size="15" font-weight="700">#102</text>
+  <rect x="104" y="143" width="40" height="18" rx="9" fill="#1f2f41"/>
+  <text x="124" y="156" fill="#9fb3c8" font-size="11" text-anchor="middle">배달</text>
+  <text x="58" y="180" fill="#c8d6e4" font-size="13">카페 라떼 2잔</text>
+  <line x1="58" y1="192" x2="284" y2="192" stroke="#243040"/>
+  <text x="58" y="212" fill="#6f8296" font-size="11">가게 칸</text>
+  <text x="112" y="212" fill="#59697b" font-size="12">(비어 있음)</text>
+  <text x="58" y="236" fill="#6f8296" font-size="11">배달 칸</text>
+  <text x="112" y="236" fill="#e6edf5" font-size="12">문 앞에 두세요.</text>
+  <text x="112" y="255" fill="#e6edf5" font-size="12">한 잔은 디카페인으로요</text>
+  <text x="58" y="276" fill="#e0a63c" font-size="11">↑ 가게에 할 말이 기사 칸에 적혀 있다</text>
+
+  <path d="M310 206 L346 206" stroke="#5f7891" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <!-- 2. 코드: 문장 나누기 -->
+  <text x="356" y="118" fill="#6f8296" font-size="12" font-weight="700" letter-spacing="1">② 코드 · 문장 나누기</text>
+  <rect x="356" y="130" width="226" height="152" rx="12" fill="#16202c" stroke="#243040"/>
+  <text x="374" y="156" fill="#c8d6e4" font-size="12">두 칸을 모두 읽는다</text>
+  <rect x="374" y="168" width="190" height="30" rx="7" fill="#1b2635"/>
+  <text x="386" y="188" fill="#9fb3c8" font-size="11">s1  문 앞에 두세요</text>
+  <rect x="374" y="204" width="190" height="30" rx="7" fill="#1b2635"/>
+  <text x="386" y="224" fill="#9fb3c8" font-size="11">s2  한 잔은 디카페인으로요</text>
+  <text x="374" y="258" fill="#e0a63c" font-size="11">칸 이름은 모델에 보내지 않는다</text>
+  <text x="374" y="274" fill="#6f8296" font-size="10">칸을 따라가지 않고 문장만 보게 한다</text>
+
+  <path d="M590 206 L626 206" stroke="#5f7891" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <!-- 3. Zoro-1 -->
+  <text x="636" y="118" fill="#2dd4ff" font-size="12" font-weight="700" letter-spacing="1">③ Zoro-1 · 문장마다 4가지 질문</text>
+  <rect x="636" y="130" width="258" height="152" rx="12" fill="#10222e" stroke="#2dd4ff" stroke-opacity="0.55"/>
+  <text x="654" y="154" fill="#7fe3ff" font-size="11">kind · option · partial · body</text>
+  <line x1="654" y1="164" x2="876" y2="164" stroke="#1d3a49"/>
+  <text x="654" y="188" fill="#8b9aad" font-size="11">s1</text>
+  <text x="678" y="188" fill="#e6edf5" font-size="12">delivery</text>
+  <text x="876" y="188" fill="#7fe3ff" font-size="12" text-anchor="end">0.94</text>
+  <text x="654" y="214" fill="#8b9aad" font-size="11">s2</text>
+  <text x="678" y="214" fill="#e6edf5" font-size="12">recipe · decaf</text>
+  <text x="876" y="214" fill="#7fe3ff" font-size="12" text-anchor="end">0.91</text>
+  <line x1="654" y1="232" x2="876" y2="232" stroke="#1d3a49"/>
+  <text x="654" y="254" fill="#8b9aad" font-size="11">확률만 돌려준다.</text>
+  <text x="654" y="272" fill="#8b9aad" font-size="11">잔 수 · 순서 · 금액은 묻지 않는다.</text>
+
+  <path d="M902 206 L938 206" stroke="#5f7891" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <!-- 4. 코드: 확신 라우팅 -->
+  <text x="948" y="118" fill="#6f8296" font-size="12" font-weight="700" letter-spacing="1">④ 코드 · 확신으로 라우팅</text>
+  <rect x="948" y="130" width="292" height="152" rx="12" fill="#16202c" stroke="#243040"/>
+  <rect x="966" y="146" width="256" height="32" rx="7" fill="#2a1430" stroke="#ff2e93" stroke-opacity="0.5"/>
+  <text x="982" y="167" fill="#ff7ac0" font-size="12" font-weight="700">0.9 ↑</text>
+  <text x="1036" y="167" fill="#e6edf5" font-size="12">주문 카드에 바로 반영</text>
+  <rect x="966" y="186" width="256" height="32" rx="7" fill="#2b2310" stroke="#c98a00" stroke-opacity="0.6"/>
+  <text x="982" y="207" fill="#e0a63c" font-size="12" font-weight="700">0.7 ↑</text>
+  <text x="1036" y="207" fill="#e6edf5" font-size="12">반영 + ⚠ 되돌릴 수 있음</text>
+  <rect x="966" y="226" width="256" height="32" rx="7" fill="#1b2635"/>
+  <text x="982" y="247" fill="#9fb3c8" font-size="12" font-weight="700">미만</text>
+  <text x="1036" y="247" fill="#c8d6e4" font-size="12">반영하지 않고 원문 + ⚠</text>
+  <text x="966" y="274" fill="#6f8296" font-size="10">돈 · 몸 상태 · 취소는 확신과 무관하게 사람 확인</text>
+
+  <!-- 5. 결과 보드 -->
+  <text x="40" y="330" fill="#6f8296" font-size="12" font-weight="700" letter-spacing="1">⑤ 결과 · 주방 보드</text>
+  <rect x="40" y="342" width="1200" height="194" rx="14" fill="#101a25" stroke="#1e2a38"/>
+
+  <rect x="62" y="364" width="264" height="150" rx="11" fill="#131d29" stroke="#ff2e93" stroke-opacity="0.75"/>
+  <circle cx="86" cy="390" r="11" fill="#ff2e93"/>
+  <text x="86" y="394" fill="#1a0c14" font-size="12" font-weight="700" text-anchor="middle">1</text>
+  <text x="106" y="395" fill="#e6edf5" font-size="15" font-weight="700">#101</text>
+  <text x="306" y="395" fill="#9fb3c8" font-size="11" text-anchor="end">매장</text>
+  <rect x="82" y="412" width="224" height="30" rx="6" fill="#2a1430"/>
+  <rect x="82" y="412" width="4" height="30" fill="#ff2e93"/>
+  <text x="98" y="432" fill="#e6edf5" font-size="13">카페 라떼</text>
+  <text x="294" y="432" fill="#e6edf5" font-size="13" text-anchor="end">1잔</text>
+  <text x="82" y="462" fill="#6f8296" font-size="11">8분 대기</text>
+  <rect x="82" y="472" width="224" height="30" rx="7" fill="#1b2635"/>
+  <text x="194" y="492" fill="#c8d6e4" font-size="12" text-anchor="middle">완료</text>
+
+  <rect x="344" y="364" width="304" height="150" rx="11" fill="#131d29" stroke="#ff2e93" stroke-opacity="0.75"/>
+  <circle cx="368" cy="390" r="11" fill="#ff2e93"/>
+  <text x="368" y="394" fill="#1a0c14" font-size="12" font-weight="700" text-anchor="middle">2</text>
+  <text x="388" y="395" fill="#e6edf5" font-size="15" font-weight="700">#102</text>
+  <rect x="442" y="381" width="40" height="18" rx="9" fill="#1f2f41"/>
+  <text x="462" y="394" fill="#9fb3c8" font-size="10" text-anchor="middle">배달</text>
+  <text x="628" y="395" fill="#ff7ac0" font-size="10" text-anchor="end">메모로 줄이 나뉨</text>
+  <rect x="364" y="412" width="264" height="28" rx="6" fill="#2a1430"/>
+  <rect x="364" y="412" width="4" height="28" fill="#ff2e93"/>
+  <text x="380" y="431" fill="#e6edf5" font-size="13">카페 라떼</text>
+  <text x="616" y="431" fill="#e6edf5" font-size="13" text-anchor="end">1잔</text>
+  <rect x="364" y="444" width="264" height="28" rx="6" fill="#1b2635" stroke="#c98a00" stroke-opacity="0.5"/>
+  <text x="380" y="463" fill="#e6edf5" font-size="13">카페 라떼</text>
+  <text x="466" y="463" fill="#e0a63c" font-size="11">디카페인</text>
+  <text x="616" y="463" fill="#e6edf5" font-size="13" text-anchor="end">1잔</text>
+  <text x="364" y="490" fill="#e0a63c" font-size="11">⚠ 배달 칸 메모 반영 : 1잔 디카페인</text>
+  <text x="364" y="506" fill="#59697b" font-size="10">s1 “문 앞에 두세요” → 가게 일 아님 · 접힘</text>
+
+  <rect x="666" y="364" width="552" height="150" rx="11" fill="#1d1226" stroke="#ff2e93" stroke-opacity="0.65"/>
+  <text x="690" y="394" fill="#ff7ac0" font-size="12" font-weight="700">일머리 팁 · 지금 만들 작업</text>
+  <text x="690" y="424" fill="#e6edf5" font-size="16" font-weight="700">카페 라떼 2잔 만들기</text>
+  <rect x="690" y="438" width="52" height="20" rx="5" fill="#2a1430"/>
+  <text x="716" y="453" fill="#ff7ac0" font-size="11" text-anchor="middle">#101</text>
+  <rect x="750" y="438" width="52" height="20" rx="5" fill="#2a1430"/>
+  <text x="776" y="453" fill="#ff7ac0" font-size="11" text-anchor="middle">#102</text>
+  <text x="814" y="453" fill="#9fb3c8" font-size="12">샷 추출 한 번에</text>
+  <text x="690" y="482" fill="#c8d6e4" font-size="12">디카페인 1잔은 원두를 바꿔야 해서 따로 만들어요.</text>
+  <text x="690" y="502" fill="#59697b" font-size="11">메모로 옵션이 붙으면 묶기를 다시 묻는다 — 판단이 다음 판단을 부른다</text>
+
+  <!-- 실패 경로 -->
+  <rect x="40" y="558" width="1200" height="106" rx="12" fill="#14100a" stroke="#8a6a1a" stroke-opacity="0.65"/>
+  <text x="66" y="590" fill="#e0a63c" font-size="13" font-weight="700">Zoro가 답하지 못하면 — 모르면 같이 만들지 않는다</text>
+  <text x="66" y="616" fill="#c8d6e4" font-size="12">메모는 원문 그대로 + ⚠ 로 남고, 그 주문은 다른 주문과 묶지 않고 따로 뺀다. 주문 접수 · 제조 · 완료는 그대로 계속된다.</text>
+  <text x="66" y="640" fill="#8b9aad" font-size="11.5">형식이 깨진 응답은 계약 검증에서 거부 · 늦게 온 응답은 시퀀스로 폐기 · 이미 만들기 시작한 주문에는 뒤늦은 메모를 적용하지 않음</text>
+  <rect x="1012" y="578" width="202" height="66" rx="9" fill="#1b2635" stroke="#243040"/>
+  <text x="1113" y="602" fill="#9fb3c8" font-size="11" text-anchor="middle">note_read.status</text>
+  <text x="1113" y="626" fill="#e6edf5" font-size="13" text-anchor="middle">unavailable · hold</text>
+</svg>
