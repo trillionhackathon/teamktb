@@ -5,3 +5,8 @@ next-env.d.ts
 .env*
 !.env.example
 .data/
+
+# 심사 준비용 내부 문서 — 커밋하지 않는다 (심사위원 응대 대본·점수 추정 포함)
+docs/hackathon-submission-tasks.md
+docs/service-spec-and-agent-log-plan.md
+docs/Trillion_Agent_Hackathon_2026_Team_Guide_1.md
