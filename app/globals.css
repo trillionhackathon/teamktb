@@ -323,3 +323,143 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .scenario-control select { max-width: 220px; min-height: 34px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; }
 .quest-card.quick-lane .card-items { flex: 0 0 auto; }
 .quest-card.quick-lane .card-body { gap: 4px; }
+
+/* =====================================================================
+   다크 프레임 스킨 (색과 모양만). 구조와 내용은 위 규칙 그대로다.
+   - 프레임(맨 위 바, 왼쪽 마법사, 아래 일머리 팁): #2e3b4e 슬레이트
+   - KDS(일머리 보드): 프레임 안에 박힌 어두운 모니터 화면
+   - 같이 만들 주문: 진한 분홍(anchorColor), 8번 빠른 주문 칸: 노랑, 주문 번호 칸: 약한 회색
+   ===================================================================== */
+:root {
+  color-scheme: dark;
+  --frame: #2e3b4e;
+  --frame-card: #3a4a62;
+  --frame-line: #51627c;
+  --screen: #0f1722;
+  --screen-card: #17222f;
+  --screen-line: #2a3a4d;
+  --ink: #eef3f9;
+  --ink-muted: #aebccd;
+  --hl: #ff2e93;
+  --quick: #ffb92e;
+  --pill: #566982;
+}
+body { background: var(--frame); color: var(--ink); }
+
+/* 프레임: 맨 위 바, 왼쪽 마법사, 아래 팁 */
+.topbar, .agent-panel, .notice-section {
+  --surface: var(--frame-card);
+  --soft: var(--frame-card);
+  --line: var(--frame-line);
+  --text: var(--ink);
+  --muted: var(--ink-muted);
+  --accent-ink: #9cc8ff;
+  --event-ink: #ff9d94;
+  --event-surface: #4d303c;
+}
+.topbar { background: var(--frame); border-bottom: 0; }
+.topbar-link { color: #b9d6ff; }
+.feed-toggle, .scenario-control select, .secondary-button { background: var(--frame-card); border-color: var(--frame-line); color: var(--ink); }
+.feed-toggle:hover, .secondary-button:hover { background: #435673; }
+.feed-toggle.on { border-color: #45d483; background: #24503b; color: #b7f5d0; }
+.connection-live::before, .ai-status.ai-connected::before, .feed-toggle.on::before { background: #45d483; }
+
+.quest-layout { height: calc(100dvh - 59px); min-height: 0; }
+.agent-panel { height: 100%; background: transparent; border-inline-end: 0; padding: 6px 12px 14px 18px; }
+.wizard-avatar:hover { background: transparent; }
+.agent-summary { background: #284460; color: #fff; }
+.agent-message.level-warn .agent-message-meta { color: #ffd27a; }
+.stock-row.status-ok { background: transparent; }
+.stock-row.status-short, .stock-row.status-danger { background: #4d303c; }
+.stock-status { background: #24503b; color: #8be8b0; }
+.stock-row.status-warn .stock-status, .stock-row.status-soon .stock-status, .stock-row.status-board_danger .stock-status { background: #6d5a1c; color: #ffe3a0; }
+.stock-row.status-danger .stock-status, .stock-row.status-short .stock-status { background: #7a3340; color: #ffc2bb; }
+.stock-bar { background: #24303f; }
+.agent-action { background: var(--frame); border-color: #6b7e99; }
+.agent-action:hover { background: #435673; }
+
+/* 오른쪽: KDS 화면 + 아래 팁 칸. 한 화면 안에 들어가고, 모자라면 각 칸 안에서만 스크롤된다. */
+.quest-main { gap: 12px; min-height: 0; height: 100%; padding: 0 16px 14px 0; background: transparent; }
+.board-section {
+  --surface: var(--screen-card);
+  --soft: #243246;
+  --line: var(--screen-line);
+  --text: var(--ink);
+  --muted: var(--ink-muted);
+  --accent-ink: #9cc8ff;
+  --event-ink: #ff9d94;
+  --event-surface: #4d303c;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px 18px 16px;
+  overflow: auto;
+  border-radius: 16px;
+  background: var(--screen);
+  box-shadow: 0 0 0 2px #1a2433, inset 0 0 0 1px #223146;
+}
+.board-section .section-heading { margin-bottom: 8px; }
+.notice-section { flex: 0 1 auto; max-height: 26vh; min-height: 110px; padding: 4px 4px 0; overflow-y: auto; background: transparent; }
+.notice-section .section-heading { margin-bottom: 8px; }
+
+/* KDS 카드: 높이는 내용에 맞추고, 한 화면에 들어가도록 고정 높이를 푼다 */
+.board-section .quest-card, .board-section .quest-card.candidate, .board-section .quest-card.quick-lane { height: auto; min-height: 150px; }
+.board-section .quest-card.empty { min-height: 150px; }
+.board-section .quest-card { background: var(--screen-card); }
+.board-section .quest-card.candidate { background: #131d29; }
+.board-section .quest-card.empty { background: transparent; }
+.board-section .quest-card:has(.card-detail-trigger:hover) { background: #1d2b3c; border-color: #6f9bd6; }
+.board-section .card-empty { color: #7d8ea3; }
+.board-section .card-detail-arrow { border-color: #8fb4e6; }
+.board-section .slot-number { background: #2b3b50; color: #fff; }
+.board-section .candidate .slot-number { background: #223044; color: var(--ink); }
+.board-section .empty .slot-number { background: #1d2a3a; color: #7d8ea3; }
+.board-section .order-channel { background: rgba(0, 0, 0, .32); }
+.board-section .order-channel[data-channel="포장"] { color: #8ec5ff; }
+.board-section .order-channel[data-channel="매장"] { color: #ffd479; }
+.board-section .order-channel[data-channel="배달"] { color: #7fe3a5; }
+.board-section .item-prepared { background: #24503b; color: #8be8b0; }
+.board-section .item-done .item-name, .board-section .item-done .item-qty { color: #7d8ea3; }
+.board-section .card-flag.tone-warn { color: #ffd27a; }
+.board-section .card-flag.tone-ok { color: #8be8b0; }
+.board-section .card-reason { background: #1d2b3c; }
+.board-section .card-button { background: transparent; border-color: #3e5068; color: var(--ink); }
+.board-section .card-button.complete { background: #26364a; border-color: #3e5068; color: var(--ink); }
+.board-section .card-button.complete:hover { background: #31455c; }
+.board-section .card-button:disabled { border-color: #2a3a4d; background: #1d2a3a; color: #7d8ea3; }
+.board-section .quest-card.is-made .item-name, .board-section .quest-card.is-made .item-qty { color: #7d8ea3; }
+
+/* 같이 만들 주문: 진한 분홍으로 카드 전체가 눈에 띄게 */
+.board-section .quest-card.grouped {
+  border: 2px solid var(--group, var(--hl));
+  padding: 11px 13px;
+  background: #3a1226;
+  box-shadow: 0 0 0 2px rgba(255, 46, 147, .3), 0 0 20px rgba(255, 46, 147, .4);
+}
+.board-section .quest-card.grouped .card-items, .board-section .quest-card.grouped .card-foot { border-top-color: rgba(255, 46, 147, .35); }
+.board-section .quest-card.grouped .slot-number { background: var(--hl); }
+.group-tag { color: #fff; }
+.board-section .group-legend li { background: transparent; box-shadow: none; }
+.board-section .group-legend li i { box-shadow: 0 0 8px currentColor; }
+
+/* 8번 빠른 주문 칸: 노랑 */
+.board-section .quest-card.quick-lane { border: 2px solid #8a6a1a; padding: 11px 13px; background: #231c0c; }
+.board-section .quest-card.quick-lane.is-ready { border-color: var(--quick); background: #33290f; }
+.board-section .quest-card.quick-lane .slot-number { background: var(--quick); color: #1d1503; }
+.board-section .quick-lane-title, .board-section .quick-lane-status { color: var(--quick); }
+.board-section .quick-lane-served { color: #c8d99a; }
+.board-section .quick-tag { background: var(--quick); color: #1d1503; }
+.board-section .quick-lane .card-button.complete { background: #4a3a10; border-color: var(--quick); color: #ffe6a8; }
+
+/* 아래 일머리 팁: 프레임 위에 카드 한 장씩 */
+.notice-section .note-list { gap: 10px; }
+.notice-section .note-card { padding: 11px 14px; border-radius: 12px; background: var(--frame-card); }
+.notice-section .note-card .note-detail { color: #dfe7f1; }
+.note-button { background: var(--ink); color: #0f1722; }
+.note-button:hover { background: #fff; }
+.note-button:disabled { background: #7d8ea3; color: #1d2a3a; }
+
+/* 주문 번호가 적힌 칸: 약한 회색 바탕 */
+.order-id-chip { display: inline-block; padding: 0 7px; border-radius: 7px; background: var(--pill); color: #fff; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* 주문 상세 창은 밝은 모양 그대로 둔다(작은 보조 창) */
+.order-detail { --surface: #fff; --text: #17181c; --muted: #565a63; --line: #e0e3e8; --soft: #f3f5f8; --accent-ink: #155794; --event-ink: #a1262f; color-scheme: light; }

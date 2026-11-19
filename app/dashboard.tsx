@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { callApi, orderPath } from './client/api.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
 import type { BoardReview, Decision, Note, QuickLane, Slot4Info } from './domain/types.ts';
@@ -22,7 +22,7 @@ function reviewHint(review: BoardReview, grouped: boolean): string {
   if (!review.anchor) return '들어온 순서대로예요';
   if (review.status === 'checking') return `들어온 순서대로예요. Zoro가 ${review.anchor} 주문과 비슷한 주문을 찾고 있어요`;
   if (review.status === 'unavailable') return '들어온 순서대로예요. Zoro가 답하지 못해서 묶지 못했어요';
-  return grouped ? `들어온 순서대로예요. 초록색은 ${review.anchor} 주문과 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
+  return grouped ? `들어온 순서대로예요. 분홍색은 ${review.anchor} 주문과 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
 }
 
 // 카드에 붙이는 Zoro 묶음 이름표. 기준 주문은 "기준", 짝은 "같이 만들기 · Zoro 0.91"(같은 메뉴면 1.00).
@@ -79,10 +79,15 @@ function useAgentLog(agent: AgentResponse | null): { summary: AgentMessageData |
   return { summary: agent?.messages.find(({ id }) => id === 'summary'), log, dismissItem };
 }
 
+// 글 속 주문 번호(#118)를 약한 회색 칸으로 감싼다. 글 내용은 바꾸지 않는다.
+function withOrderIds(text: string): ReactNode {
+  return text.split(/(#\d+)/g).map((part, index) => (/^#\d+$/.test(part) ? <span key={index} className="order-id-chip">{part}</span> : part));
+}
+
 function AgentMessage({ message, onRestock, busy }: { message: AgentLogEntry; onRestock: (itemId: string) => void; busy: boolean }) {
   return (
     <li className={`agent-message level-${message.level}${message.resolved ? ' resolved' : ''}`}>
-      <p>{message.text}</p>
+      <p>{withOrderIds(message.text)}</p>
       <div className="agent-message-meta">
         <strong>{message.resolved ? `${message.topic} 해결됨` : message.topic}</strong>
         <time dateTime={message.at ?? message.seen_at}>{formatClock(message.at ?? message.seen_at)}</time>
@@ -173,10 +178,10 @@ function NoteCard({ note, busy, onComplete }: { note: Note; busy: boolean; onCom
   return (
     <li className="note-card">
       <div className="note-body">
-        <p className="note-text">{note.text}</p>
-        {note.detail && <p className="note-detail">{note.detail}</p>}
-        {note.reason && <p className="note-detail">{note.reason}</p>}
-        {note.zoro && <p className="note-zoro">{note.zoro}</p>}
+        <p className="note-text">{withOrderIds(note.text)}</p>
+        {note.detail && <p className="note-detail">{withOrderIds(note.detail)}</p>}
+        {note.reason && <p className="note-detail">{withOrderIds(note.reason)}</p>}
+        {note.zoro && <p className="note-zoro">{withOrderIds(note.zoro)}</p>}
       </div>
       {onComplete && <button type="button" className="note-button" disabled={busy} onClick={onComplete}>{note.kind === 'head' ? `${orderId} 완료` : '내줬어요'}</button>}
     </li>
@@ -370,7 +375,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                       <div><dt>오늘</dt><dd>{item.used_today}</dd></div>
                       {item.used_today_real !== item.used_today && <div><dt>실제 주문</dt><dd>{item.used_today_real}</dd></div>}
                     </dl>
-                    {item.note && <span className="stock-note">{item.note}</span>}
+                    {item.note && <span className="stock-note">{withOrderIds(item.note)}</span>}
                   </li>
                 ))}
               </ul>
