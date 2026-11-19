@@ -1,7 +1,8 @@
 import cafeDb from '../../data/cafe_db.json' with { type: 'json' };
+import ownerRulesData from '../../data/owner_rules.json' with { type: 'json' };
 import recipe from '../../data/recipe.json' with { type: 'json' };
 import type { MenuCatalog, MenuDrink, MenuOption } from './menu.ts';
-import type { SizeId } from './types.ts';
+import type { OwnerRules, SizeId } from './types.ts';
 
 // data/ 원본에서 메뉴 카탈로그를 만든다. 서버와 테스트에서만 import하고, 화면에는 결과 객체를 props로 넘긴다.
 type TimedMenu = { first_cup_sec: number; additional_cup_sec: number; complexity: number; basis?: string };
@@ -62,3 +63,6 @@ export const boardConfig = {
   visibleCount: cafeDb.kds_board.rows * cafeDb.kds_board.cols,
   confidenceThreshold: cafeDb.model.confidence_threshold,
 };
+
+// 사장님 기준(data/owner_rules.json). sentences는 Zoro에, limits는 사실 계산과 룰에 쓴다.
+export const ownerRules: OwnerRules = { sentences: ownerRulesData.sentences, limits: ownerRulesData.limits };

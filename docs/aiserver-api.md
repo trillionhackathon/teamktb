@@ -1,17 +1,18 @@
 # aiserver API 명세
 
-`teamktb`(Next.js 서버)와 `aiserver`(FastAPI) 사이의 HTTP 계약이다. 기준 코드는 aiserver `feat/ai-skeleton` 브랜치의 `app/schemas.py`, `app/main.py`, `app/pipeline.py`와 teamktb의 [app/ai/contract.ts](../app/ai/contract.ts), [app/server/aiserver.ts](../app/server/aiserver.ts)다. 필드를 바꾸면 양쪽 코드, [tests/ai-contract.test.ts](../tests/ai-contract.test.ts), 이 문서를 함께 고친다.
+`teamktb`(Next.js 서버)와 `aiserver`(FastAPI) 사이의 HTTP 계약이다. 기준 코드는 aiserver `main`(4번 고르기는 `feat/pick-next`)의 `app/schemas.py`, `app/main.py`, `app/pipeline.py`와 teamktb의 [app/ai/contract.ts](../app/ai/contract.ts), [app/server/aiserver.ts](../app/server/aiserver.ts)다. 필드를 바꾸면 양쪽 코드, [tests/ai-contract.test.ts](../tests/ai-contract.test.ts), 이 문서를 함께 고친다.
 
 ## 구성
 
 ```text
 브라우저 ──(SSE / REST)──▶ teamktb Next.js 서버 ──HTTP──▶ aiserver ──HTTP──▶ Zoro-1 서버
-                           주문 저장·보드 상태        재배치·팁·입력 분류      POST /v1/systemone
+                           주문 저장·보드 상태     4번 고르기·팁·입력 분류   POST /v1/systemone
 ```
 
-- 브라우저는 aiserver 주소를 모른다. aiserver 호출은 Next.js 서버의 주문 저장소(`app/server/order-store.ts`)와 퀘스트 보드 중계 API(`app/api/quest/route.ts`)만 한다.
+- 브라우저는 aiserver 주소를 모른다. aiserver 호출은 Next.js 서버의 주문 저장소(`app/server/order-store.ts`)만 한다.
 - aiserver는 상태를 저장하지 않는다. 요청마다 현재 보드 전체를 받아 판단만 돌려준다.
 - 주문 상태 변경(시작·완료·재제조)과 최종 보드 순서 확정은 teamktb가 한다. aiserver 응답은 검증을 통과할 때만 반영한다.
+- 보드 순서는 1번(고정칸) 완료 때만 바뀐다. 그때 `POST /ai/pick-next`로 4번에 넣을 주문을 묻는다. 숫자는 teamktb가 계산해 사실 문장으로 보내고, Zoro는 사장님 기준을 보고 고르기만 한다. 설계는 [pick-next-implementation.md](pick-next-implementation.md).
 
 ## 공통
 
@@ -34,11 +35,88 @@ aiserver 생존 확인.
 
 Zoro 연결 여부는 알려 주지 않는다. Zoro가 죽어도 aiserver는 `200`으로 규칙 폴백 응답을 준다(`fallback: true`).
 
+## POST /ai/pick-next
+
+1번 완료 때 대기 5~8번 중 4번 칸에 넣을 주문을 고른다. aiserver는 Zoro에 `choice` 질문 하나를 묻고, 1등 확률이 `PICK_THRESHOLD`(기본 0.7) 이상이면 그 주문을, 아니면 teamktb가 보낸 `rule_pick`을 돌려준다.
+
+**호출 시점:** 고정칸(1~4번) 주문이 완료될 때. teamktb는 2~4번을 당기고 룰 선택을 4번에 먼저 넣은 뒤("확인 중") 이 요청을 보낸다. 4번은 1~3번이 끝난 뒤에 만들기 시작하므로 Zoro 답이 1초쯤 걸려도 알바가 기다리지 않는다. 후보가 하나면 묻지 않는다.
+
+### 요청 — `PickRequest`
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `now` | ISO 8601 UTC | 지금 시각. aiserver가 KST로 바꿔 Zoro 상태에 넣는다 |
+| `baristas` | `int ≥ 1` | 바리스타 수 |
+| `owner_rules` | `string[]` | 사장님 기준 문장. teamktb [data/owner_rules.json](../data/owner_rules.json) `sentences` |
+| `locked` | `{ id, facts }[]` (최대 3) | 새 1~3번, 칸 순서 |
+| `candidates` | `{ id, facts }[]` (1~4) | 4번 후보(기존 5~8번 중 대기 중이고 만들 수 있는 주문), 들어온 순서 |
+| `rule_pick` | `string` | teamktb 룰 선택. `candidates` 안의 id여야 한다(아니면 `422`) |
+| `examples` | `string[]` | 알바가 고친 예시. 지금은 빈 배열 |
+
+`facts`는 teamktb [app/domain/facts.ts](../app/domain/facts.ts)가 계산한 한 줄이다. 시간은 "5분 10초"처럼 사람이 읽는 말로 넣고, Zoro에게 시각 두 개를 주고 빼기를 시키지 않는다. 종합 점수는 넣지 않는다.
+
+```json
+{
+  "now": "2026-11-19T03:37:20Z",
+  "baristas": 1,
+  "owner_rules": ["매장·포장 손님은 10분을 넘기지 않는다", "배달은 라이더 도착보다 2분까지 늦어도 괜찮다"],
+  "locked": [
+    { "id": "#104", "facts": "딸기 스무디 1잔 · 매장 · 재료 준비됨" },
+    { "id": "#106", "facts": "아이스 아메리카노 2잔 · 배달 · 다 만듦 · 라이더 1분 10초 뒤" },
+    { "id": "#107", "facts": "딸기 스무디 1잔 · 매장 · 재료 준비됨" }
+  ],
+  "candidates": [
+    { "id": "#105", "facts": "아이스 아메리카노 1잔 · 포장 · 2분 기다림" },
+    { "id": "#108", "facts": "카페 라떼 2잔 · 포장 · 7분 20초 기다림 · 4번이면 9분 30초에 나감, 밀리면 11분 10초에 나감 (기준 10분 넘김)" },
+    { "id": "#109", "facts": "아이스 아메리카노 2잔 · 배달 · 라이더 8분 40초 뒤 · 여유 있음" },
+    { "id": "#110", "facts": "카페 라떼 1잔 · 배달 · 라이더 3분 40초 뒤 · 4번이 아니면 1분 30초 늦음 (기준 2분 안)" }
+  ],
+  "rule_pick": "#110",
+  "examples": []
+}
+```
+
+### 응답 — `PickResult`
+
+```json
+{ "pick": "#108", "source": "zoro", "confidence": 0.78,
+  "scores": { "#105": 0.02, "#108": 0.78, "#109": 0.03, "#110": 0.17 }, "fallback": false }
+```
+
+| 필드 | 뜻 |
+| --- | --- |
+| `pick` | 4번에 넣을 주문. 항상 `candidates` 안의 id |
+| `source` | `zoro`: Zoro 1등이 임계값 이상. `rule`: 확신이 낮거나 Zoro 실패라 `rule_pick`을 돌려줌 |
+| `confidence` | Zoro 1등 확률. Zoro가 실패했으면 `1.0`(룰) |
+| `scores` | 후보별 Zoro 확률(후보 id만). Zoro가 실패했으면 빈 객체 |
+| `fallback` | Zoro 호출 자체가 실패했으면 `true` |
+
+aiserver는 요청마다 후보, 점수, 선택, 걸린 시간을 `pick-next {...}` 로그 한 줄로 남긴다.
+
+### Zoro 질문
+
+```json
+{
+  "state": { "지금": "12:37:20 · 바리스타 1명", "사장님 기준": ["..."], "지금 만드는 1~3번": ["#104 딸기 스무디 1잔 · 매장 · 재료 준비됨"], "예시": [] },
+  "questions": { "next": { "type": "choice",
+    "instructions": "1~3번 다음에 만들 주문 하나를 고르세요. 사장님 기준을 먼저 따르고, 기준이 말하지 않는 부분은 먼저 온 손님을 먼저 합니다.",
+    "criteria": { "#105": "...", "#108": "...", "#109": "...", "#110": "..." } } }
+}
+```
+
+### teamktb의 룰과 반영
+
+- 룰(`app/domain/board.ts` `rulePickNext`): ① `max_overtaken`(3)번 이상 밀린 주문 → ② 4번이 아니면 `delivery_late_ok_sec`(120초)보다 더 늦는 배달 중 여유가 가장 적은 주문 → ③ 가장 오래 기다린 주문.
+- 응답은 `parsePickResult`로 형식을 검사한다. `source: "zoro"`이고 `pick`이 후보 안에 있을 때만 4번을 바꾼다. 형식 오류, 타임아웃, `source: "rule"`, 후보 밖 id는 룰 선택을 그대로 둔다.
+- 기다리는 사이 다른 고정칸이 또 완료됐거나 4번이 바뀌었으면 늦게 온 응답을 버린다.
+- 4번이 정해지면 그 주문보다 먼저 접수된 후보의 `overtaken`을 1 올린다. 이 값은 `/ai/decide`의 `overtaken`으로도 보낸다.
+- 화면 4번 카드에는 "확인 중", "Zoro 0.78", "룰" 중 하나를 붙이고, Zoro가 룰과 다르게 골랐으면 "룰은 #110 · (사실 문장)"을 쓴다.
+
 ## POST /ai/decide
 
-보드 재배치, 예상 완료 시각, 일머리 팁을 한 번에 받는다.
+일머리 팁을 받는다. 응답에는 보드 재배치(`orders`, `moves`)와 예상 완료 시각도 있지만 teamktb는 **팁만 쓰고 보드 순서는 바꾸지 않는다**(보드 순서는 `/ai/pick-next`만 바꾼다).
 
-**호출 시점:** 새 주문 접수, 시작·완료 버튼, 매장·배달·재고 이벤트, 시나리오 입력이 있을 때마다 호출한다. teamktb는 250ms 동안 들어온 변경을 묶어 한 번만 보내고(`decideDelayMs`), 응답이 오기 전에 상태가 바뀌면 늦게 온 응답을 버린다.
+**호출 시점:** 새 주문 접수, 시작·완료 버튼, 매장·배달·재고 이벤트, 시나리오 입력이 있을 때마다 호출한다. teamktb는 250ms 동안 들어온 변경을 묶어 한 번만 보내고(`decideDelayMs`), 응답이 오기 전에 상태가 바뀌면 늦게 온 응답을 버린다. 보드 8칸(1~4번 고정 + 5~8번 대기)만 보낸다.
 
 ### 요청 — `StoreState`
 
@@ -60,7 +138,7 @@ Zoro 연결 여부는 알려 주지 않는다. Zoro가 죽어도 aiserver는 `20
 | `created_at` | datetime | O | 접수 시각. 재배치해도 바뀌지 않는다. |
 | `prep_seconds` | `int ≥ 0` | | 남은 제조 시간(초). 제조 중이면 남은 시간만 보낸다. 기본 60 |
 | `rider_status` | `"none" \| "assigned" \| "arrived"` | | 배달만 의미 있음. teamktb `not_dispatched` → `none`, `dispatched` → `assigned`, `arrived` → `arrived` |
-| `overtaken` | `int ≥ 0` | | 다른 주문에 추월당한 횟수. 현재 teamktb는 항상 `0`을 보낸다(아래 미결 항목 참고). |
+| `overtaken` | `int ≥ 0` | | 4번 고르기에서 뒤 주문에게 밀린 횟수. teamktb가 주문별로 센다. |
 | `remake` | `bool` | | 재제조 주문 여부. 현재 teamktb는 항상 `false`를 보낸다. |
 
 ```json
@@ -78,7 +156,7 @@ Zoro 연결 여부는 알려 주지 않는다. Zoro가 죽어도 aiserver는 `20
 }
 ```
 
-(예시는 줄였다. 실제로는 1~5번 고정칸 주문까지 보드 순서대로 모두 보낸다.)
+(예시는 줄였다. 실제로는 1~4번 고정칸 주문까지 보드 순서대로 8칸을 보낸다.)
 
 ### 응답 — `DecideResult`
 
@@ -140,22 +218,18 @@ Zoro 연결 여부는 알려 주지 않는다. Zoro가 죽어도 aiserver는 `20
 | 팁 | Zoro `noul`로 팁별 필요 확률 (`TIP_THRESHOLD` 0.7) | LLM 폴백(`LLM_ENABLED=true`일 때) | 팁 없음 |
 | 입력 분류 | Zoro `choice` (`INTENT_THRESHOLD` 0.7) | LLM 폴백 | `needs_review` |
 
-### teamktb의 응답 검증과 반영
+### teamktb의 응답 반영
 
-`app/domain/board.ts` `applyAiOrder`가 아래를 모두 통과할 때만 순서를 반영한다. 하나라도 어기면 응답을 버리고 규칙 정렬을 쓴다.
-
-1. `orders`가 요청한 1~10번 주문과 같은 집합이고 중복이 없다.
-2. 앞 `locked_count`개가 요청 순서와 같다(고정칸 불변).
-3. 6~10번 중 제조 중이거나 장비 고장으로 막힌 주문은 제자리를 지킨다. 재배치는 대기 중이고 만들 수 있는 주문끼리만 한다.
+`tips`(와 `feed`)만 팁으로 보여 준다. `orders`, `moves`, `eta`는 쓰지 않는다.
 
 응답 형식이 계약과 다르면(`parseDecideResult` 실패) 연결 실패와 같게 처리한다. 화면 표시는 다음과 같다.
 
 | 상황 | `decision.ai_status` | `decision.source` | 대시보드 문구 |
 | --- | --- | --- | --- |
-| `AISERVER_URL` 없음 | `disabled` | `rule` | 규칙 판단 · AI 서버 미설정 |
-| 타임아웃·네트워크 오류·HTTP 오류·형식 오류 | `unavailable` | `rule` | 규칙 판단 · AI 서버 미응답 |
-| 응답 반영, `moves`·`tips` 중 `source: "zoro"`가 있음 | `connected` | `zoro` | AI 서버 · Zoro 판단 |
-| 응답 반영, Zoro 출처 판단 없음 또는 `fallback: true` | `connected` | `rule` | AI 서버 · 규칙 판단 |
+| `AISERVER_URL` 없음 | `disabled` | `rule` | AI 서버 미설정 |
+| 타임아웃·네트워크 오류·HTTP 오류·형식 오류 | `unavailable` | `rule` | AI 서버 미응답 |
+| 응답 반영, `tips` 중 `source: "zoro"`가 있음 | `connected` | `zoro` | AI 서버 연결됨 |
+| 응답 반영, Zoro 출처 판단 없음 또는 `fallback: true` | `connected` | `rule` | AI 서버 연결됨 |
 
 ## POST /ai/operator-input
 
@@ -187,70 +261,9 @@ Zoro 연결 여부는 알려 주지 않는다. Zoro가 죽어도 aiserver는 `20
 
 빈 문자열이나 500자 초과는 `422`다. teamktb 입력창은 300자로 제한한다.
 
-## POST /ai/quest
+## POST /ai/quest (teamktb에서 쓰지 않음)
 
-일머리 퀘스트 보드(대시보드 4+4칸) 판단. 대시보드의 고정칸, 후보, 미리 만든 잔 수가 바뀔 때마다 브라우저가 teamktb `POST /api/quest`를 부르고, Next.js 서버가 이 요청을 만들어 보낸다. aiserver 쪽 구현은 `feat/quest-api` 브랜치의 `app/quest.py`다.
-
-### 요청 — `QuestState`
-
-| 필드 | 형식 | 설명 |
-| --- | --- | --- |
-| `fixed` | `QuestOrder[]` (최대 4) | 1~4번 칸, 칸 순서대로. `fixed[0]`이 지금 퀘스트 대상 |
-| `candidates` | `QuestOrder[]` (최대 4) | 5~8번 후보, 서버 보드 순서 |
-| `store` | `{ [이름]: 상태 }` | 고장 난 장비 (예: `{"블렌더": "고장"}`) |
-| `inventory` | `{ [이름]: 값 }` | 원두, 딸기 남은 양 |
-
-`QuestOrder`
-
-| 필드 | 형식 | 설명 |
-| --- | --- | --- |
-| `id` | string | 주문 번호 |
-| `items` | `{ key, label, qty }[]` | 아직 만들어야 하는 메뉴. 앞 주문 때 미리 만든 잔 수는 뺀 값. `key`가 같으면 같이 만들 수 있다 |
-| `channel` | `"store" \| "delivery"` | |
-| `created_at` | ISO 8601 | 접수 시각 |
-| `prep_seconds` | int | 남은 작업 시간 |
-| `rider_status` | `"none" \| "assigned" \| "arrived"` | |
-| `overtaken` | int | 후보로 있는 동안 뒤 주문에게 앞질린 횟수 |
-| `prepared_qty` | int | 앞 주문을 만들 때 같이 만들어 둔 잔 수 |
-
-### 응답 — `QuestResult`
-
-```json
-{
-  "candidates": [
-    {"order_id": "#7", "reason_code": "rider_waiting", "reason": "라이더가 도착해서 먼저 올려요", "confidence": 1.0, "source": "rule"},
-    {"order_id": "#6", "reason_code": "batch", "reason": "1, 4번 주문과 아이스 아메리카노를 같이 만들 수 있어요", "confidence": 1.0, "source": "rule"}
-  ],
-  "plan": {
-    "head": "#1",
-    "source": "rule",
-    "lines": [
-      {"kind": "make", "key": "아이스 아메리카노", "label": "아이스 아메리카노", "qty": 7, "parts": [{"order_id": "#1", "qty": 3}, {"order_id": "#4", "qty": 4}]},
-      {"kind": "make", "key": "바닐라 라떼", "label": "아이스 바닐라 라떼", "qty": 1, "parts": [{"order_id": "#1", "qty": 1}]},
-      {"kind": "complete", "order_id": "#1", "prepared_qty": 0}
-    ]
-  },
-  "fallback": false
-}
-```
-
-- `candidates`: 후보 순위. 첫 주문이 다음에 고정칸으로 올라간다. `reason_code`는 `overdue`, `rider_waiting`, `batch`, `short_job`, `fifo` 중 하나다.
-- `plan`: `fixed[0]`의 퀘스트. 다른 고정칸과 겹치는 메뉴를 묶어 만들기, `fixed[0]`에만 있는 메뉴 만들기, 완료 누르기 순서다. `fixed`가 비면 `null`이다.
-- `fallback: true`면 Zoro가 응답하지 않아 규칙으로만 판단했다는 뜻이다.
-
-### aiserver의 판단 규칙 (기준이 정해지기 전 임시)
-
-- 후보 순위는 오래 밀린 주문(`QUEST_MAX_OVERTAKES`, 기본 2번), 라이더 도착, 고정칸과 겹치는 잔 수, 짧은 작업(`QUEST_SHORT_JOB_S`, 기본 90초), 접수순 순서로 매긴다.
-- Zoro에는 "고정칸이 비면 어떤 후보를 올릴까"를 `choice`로 묻는다. 확률이 `REORDER_THRESHOLD`(0.7) 이상이면 그 주문을 1순위로 올린다(`source: "zoro"`). 오래 밀린 주문은 Zoro 선택보다 앞선다.
-- 퀘스트 줄은 코드 규칙으로 만든다(`source: "rule"`).
-- 음료별 기준과 매장 상황별 판단은 아직 정하지 않았다. 정해지면 `app/quest.py`의 점수와 Zoro 질문을 바꾼다.
-
-### teamktb의 응답 검증과 반영
-
-- `app/ai/contract.ts` `parseQuestResult`가 형식을 검사한다. 형식이 다르면 쓰지 않는다.
-- 응답은 요청했을 때와 고정칸, 후보, 미리 만든 잔 수가 같을 때만 쓴다. 후보 이유 문장은 고정칸까지 같을 때만 쓴다(칸 번호가 들어 있다).
-- aiserver가 없거나(`AISERVER_URL` 미설정) 응답하지 않으면 같은 규칙을 화면에서 돌린다(`app/client/quest-board.ts`). 화면에는 판단 출처를 "Zoro 판단", "규칙 판단", "화면 규칙"으로 표시한다.
-- teamktb `POST /api/quest`의 응답은 `{ status: "connected", result }` 또는 `{ status: "disabled" | "unavailable", error }`다.
+화면에서 4+4칸을 나누던 퀘스트 보드용 API였다. teamktb는 4번 고르기를 서버 저장소와 `/ai/pick-next`로 옮기면서 `POST /api/quest`와 `app/client/quest-board.ts`를 지웠다. aiserver의 `/ai/quest`(`app/quest.py`)는 남아 있다.
 
 ## 참고: aiserver → Zoro-1
 
@@ -283,9 +296,8 @@ aiserver 내부 호출이라 teamktb가 직접 부르지 않는다. 연결 설�
 
 | 항목 | 현재 상태 | 정해야 할 것 |
 | --- | --- | --- |
-| `overtaken` | teamktb가 항상 `0`을 보내서 aiserver의 추월 상한(`MAX_OVERTAKES` 3)이 동작하지 않는다. | teamktb가 주문별 추월 횟수를 저장해 보낼지, aiserver가 직전 요청과 비교해 셀지 |
 | `remake` | teamktb는 재제조를 새 주문으로 만들어 직접 1번 칸에 넣고 `false`를 보낸다. aiserver는 `remake: true` 주문을 맨 앞으로 옮기는데, 그러면 고정칸이 바뀌어 teamktb 검증에서 응답이 버려진다. | 재제조 배치를 teamktb만 맡는다고 확정하고 aiserver에서 `remake` 처리를 뺄지 |
 | `feed` | teamktb는 `feed[]`(aiserver main README 초안)도 받아 팁으로 보여 주지만 aiserver `feat/ai-skeleton`은 보내지 않는다. | `tips`와 `feed` 중 하나로 정리 |
 | `Move.confidence` | aiserver는 항상 보내고 teamktb는 선택으로 받는다. | 필수로 맞출지 |
 | `eta` | 응답에 있지만 teamktb 화면은 자체 계산(앞 주문 남은 시간 누적, 1인 기준)을 쓴다. | 손님 화면 ETA를 aiserver 값으로 바꿀지, 인원 수 반영 여부 |
-| 타임아웃 | teamktb 기본 1500ms, aiserver의 Zoro 대기 3초. Zoro가 느리면 aiserver가 답하기 전에 teamktb가 끊는다. | GPU 서버 기준 값으로 둘을 맞출지 (시연 로컬 설정은 teamktb 3000ms, Zoro 5초) |
+| 타임아웃 | teamktb 기본 1500ms, aiserver의 Zoro 대기 3초(`/ai/pick-next`도 같음). Zoro가 느리면 aiserver가 답하기 전에 teamktb가 끊는다. | GPU 서버 기준 값으로 둘을 맞출지 (시연 로컬 설정은 teamktb 3000ms, Zoro 5초) |
