@@ -14,6 +14,8 @@ import type { Order, OrderLine, WorkStep } from './types.ts';
 //    자동으로 멈추는 샷 추출을 먼저 시작하고, 그동안 1번 포장을 한다.
 // 6. made인 주문은 포장만 남는다. 포장은 그 주문이 1번일 때 쓴다(2~4번 포장을 미리 쓰면 매번 반복된다).
 // 7. 마지막 줄은 { text: '주문 #(1번) 완료', kind: 'done' }이다.
+// 8. 같은 계열(data/menu_groups.json, Zoro가 레시피로 만든 표) 메뉴는 연달아 놓는다. 단, 라이더가 오는 주문이 든 단계보다
+//    앞으로 끌어오지는 않는다. 단계마다 group을 붙여 화면이 같은 계열을 같은 색으로 잇는다.
 
 type Mode = 'make' | 'blend' | 'prep' | 'solo';
 type Part = { order: Order; slot: number; line: OrderLine };
@@ -28,6 +30,11 @@ function partText(catalog: MenuCatalog, { order, line }: Part): string {
 }
 
 function groupStep(catalog: MenuCatalog, group: Group): WorkStep {
+  const family = findDrink(catalog, group.parts[0].line.menu)?.group;
+  return { ...baseStep(catalog, group), ...(family ? { group: family } : {}) };
+}
+
+function baseStep(catalog: MenuCatalog, group: Group): WorkStep {
   const total = group.parts.reduce((sum, { line }) => sum + line.qty, 0);
   const parts = group.parts.map((part) => partText(catalog, part)).join(' · ');
   const orders = [...new Set(group.parts.map(({ order }) => order.order_id))];
@@ -43,6 +50,25 @@ function packStep(catalog: MenuCatalog, head: Order): WorkStep {
   const packaging = [...new Set(head.menu_items.flatMap((line) => line.options.filter((id) => catalog.options[id]?.label === 'packaging_only')))];
   const extras = [...optionNames(catalog, packaging), ...(head.request_note ? [`메모 "${head.request_note}"`] : [])];
   return { text: `${head.order_id} ${head.channel === 'dine-in' ? '내기' : '포장'}${extras.length ? ` · ${extras.join(' · ')}` : ''}`, orders: [head.order_id], kind: 'pack' };
+}
+
+// 같은 계열 묶음을 연달아 놓는다. g 뒤로 같은 계열 h를 당길 때, 사이에 라이더가 오는 묶음이 있으면 당기지 않는다.
+function chainFamilies(catalog: MenuCatalog, groups: Group[], riderFirst: (group: Group) => number): Group[] {
+  const familyOf = (group: Group) => findDrink(catalog, group.parts[0].line.menu)?.group?.id;
+  const rest = [...groups];
+  const out: Group[] = [];
+  while (rest.length) {
+    const head = rest.shift()!;
+    out.push(head);
+    const family = familyOf(head);
+    if (!family) continue;
+    for (let i = 0; i < rest.length; ) {
+      const between = rest.slice(0, i);
+      if (familyOf(rest[i]) === family && between.every((group) => riderFirst(group) === Infinity)) out.push(...rest.splice(i, 1));
+      else i += 1;
+    }
+  }
+  return out;
 }
 
 export function buildWorkWindow(top4: Order[], catalog: MenuCatalog, blockedReason: (order: Order) => string | undefined = () => undefined): WorkStep[] {
@@ -76,7 +102,7 @@ export function buildWorkWindow(top4: Order[], catalog: MenuCatalog, blockedReas
   const riderFirst = (group: Group) => Math.min(...group.parts.map(({ order }) => riderEtaMs(order) ?? Infinity));
   const firstSlot = (group: Group) => Math.min(...group.parts.map(({ slot }) => slot));
   const sorted = [...groups.values()].sort((a, b) => riderFirst(a) - riderFirst(b) || firstSlot(a) - firstSlot(b));
-  const makes = sorted.filter(({ mode }) => mode !== 'prep');
+  const makes = chainFamilies(catalog, sorted.filter(({ mode }) => mode !== 'prep'), riderFirst);
   const preps = sorted.filter(({ mode }) => mode === 'prep');
 
   const steps: WorkStep[] = [...holds];

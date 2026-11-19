@@ -1,4 +1,4 @@
-import type { MenuItemInput, OrderLine, SizeId } from './types.ts';
+import type { MenuGroup, MenuItemInput, OrderLine, SizeId } from './types.ts';
 
 // recipe.json + cafe_db.json에서 화면과 서버가 쓰는 값만 골라 만든 메뉴 카탈로그 형식이다.
 export type MenuOption = { id: string; name_kr: string; price_krw: number; prep_delta_sec: number; label: string; batch_blocking: boolean };
@@ -19,6 +19,7 @@ export type MenuDrink = {
   is_mvp: boolean;
   espresso_shots: number;
   strawberry_servings: number;
+  group?: MenuGroup;      // 비슷한 계열(data/menu_groups.json). 같은 계열은 연달아 만들면 준비를 나눠 쓴다
 };
 
 export type MenuCatalog = {

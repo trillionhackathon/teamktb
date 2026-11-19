@@ -178,6 +178,31 @@ describe('work window (app/domain/work-window.ts)', () => {
     assert.deepEqual(blocked.map(({ text }) => text), ['#102 보류 · 블렌더 고장으로 보류', '아이스 아메리카노 1잔 만들기 → #101 1잔', '#101 내기', '주문 #101 완료']);
     assert.deepEqual(blocked[0].orders, []);
   });
+
+  it('makes drinks of the same group (data/menu_groups.json) back to back and tags each step with its group', () => {
+    const window = buildWorkWindow([order('#101'), order('#102', { menu_items: [line('lemon_ade', 1)] }), order('#103', { menu_items: [line('latte', 1)] })], menuCatalog);
+    assert.deepEqual(window.map(({ text, group }) => `${text} [${group?.id ?? '-'}]`), [
+      '아이스 아메리카노 1잔 만들기 → #101 1잔 [g1]',
+      '카페 라떼 1잔 만들기 → #103 1잔 [g1]',
+      '레몬에이드 1잔 만들기 → #102 1잔 [g2]',
+      '#101 내기 [-]',
+      '주문 #101 완료 [-]',
+    ]);
+  });
+
+  it('does not chain a group ahead of a step with an earlier rider', () => {
+    assert.deepEqual(steps([
+      order('#101'),
+      order('#102', { channel: 'delivery', rider_eta_at: new Date(now + 60_000).toISOString(), menu_items: [line('lemon_ade', 1)] }),
+      order('#103', { menu_items: [line('latte', 1)] }),
+    ]), [
+      'make: 레몬에이드 1잔 만들기 → #102 1잔',
+      'make: 아이스 아메리카노 1잔 만들기 → #101 1잔',
+      'make: 카페 라떼 1잔 만들기 → #103 1잔',
+      'pack: #101 내기',
+      'done: 주문 #101 완료',
+    ]);
+  });
 });
 
 describe('event interpretation (scenarios.md)', () => {

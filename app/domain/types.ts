@@ -55,7 +55,9 @@ export type Slot4Info = {
 };
 
 // 작업창 한 줄. 마지막 줄은 kind 'done'("주문 #101 완료")이다.
-export type WorkStep = { text: string; orders: string[]; kind: 'make' | 'prep' | 'pack' | 'done' };
+export type MenuGroup = { id: string; name_kr: string; color: string };
+// group: 이 단계 메뉴의 계열(Zoro가 레시피로 만든 data/menu_groups.json). 같은 계열 단계는 연달아 놓는다.
+export type WorkStep = { text: string; orders: string[]; kind: 'make' | 'prep' | 'pack' | 'done'; group?: MenuGroup };
 
 export type Tip = { id: string; text: string; source: DecisionSource; confidence?: number };
 

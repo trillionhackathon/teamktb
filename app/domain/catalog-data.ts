@@ -1,8 +1,18 @@
 import cafeDb from '../../data/cafe_db.json' with { type: 'json' };
 import ownerRulesData from '../../data/owner_rules.json' with { type: 'json' };
+import menuGroupsData from '../../data/menu_groups.json' with { type: 'json' };
 import recipe from '../../data/recipe.json' with { type: 'json' };
 import type { MenuCatalog, MenuDrink, MenuOption } from './menu.ts';
-import type { OwnerRules, SizeId } from './types.ts';
+import type { MenuGroup, OwnerRules, SizeId } from './types.ts';
+
+// 비슷한 계열 표(data/menu_groups.json). Zoro가 레시피를 읽고 만든 초안을 사람이 확인해서 쓴다.
+const groupOf = menuGroupsData.menu_group as Record<string, string>;
+const groupInfo = menuGroupsData.groups as Record<string, { name_kr: string; color: string }>;
+function menuGroup(menuId: string): MenuGroup | undefined {
+  const id = groupOf[menuId];
+  const info = id ? groupInfo[id] : undefined;
+  return info ? { id, name_kr: info.name_kr, color: info.color } : undefined;
+}
 
 // data/ 원본에서 메뉴 카탈로그를 만든다. 서버와 테스트에서만 import하고, 화면에는 결과 객체를 props로 넘긴다.
 type TimedMenu = { first_cup_sec: number; additional_cup_sec: number; complexity: number; basis?: string };
@@ -34,6 +44,7 @@ function toDrink(drink: RecipeDrink): MenuDrink {
     is_mvp: recipe.mvp_menus.ids.includes(drink.id),
     espresso_shots: consumes.espresso_shot ?? 0,
     strawberry_servings: (consumes.strawberry_pulp ?? 0) / strawberryGramsPerServing,
+    group: menuGroup(drink.id),
   };
 }
 
@@ -62,6 +73,8 @@ export const boardConfig = {
   lockedCount: cafeDb.kds_board.locked_count,
   visibleCount: cafeDb.kds_board.rows * cafeDb.kds_board.cols,
   confidenceThreshold: cafeDb.model.confidence_threshold,
+  quickMenuSec: (cafeDb.kds_board as { quick_menu_sec?: number }).quick_menu_sec,
+  quickSlots: (cafeDb.kds_board as { quick_slots?: number }).quick_slots,
 };
 
 // 사장님 기준(data/owner_rules.json). sentences는 Zoro에, limits는 사실 계산과 룰에 쓴다.

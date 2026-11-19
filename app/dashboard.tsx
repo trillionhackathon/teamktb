@@ -86,6 +86,7 @@ function OrderLines({ order }: { order: OrderView }) {
           <span className="item-name">{item.name}</span>
           <span className="item-qty">{item.qty}잔</span>
           {item.options.length > 0 && <span className="item-options">{item.options.join(', ')}</span>}
+          {item.group && <span className="group-chip" style={{ color: item.group.color, borderColor: item.group.color }} title="Zoro가 레시피로 묶은 계열">{item.group.name_kr}</span>}
         </li>
       ))}
     </ul>
@@ -156,17 +157,23 @@ function WorkWindow({ steps, head, busy, onComplete }: { steps: WorkStep[]; head
   if (!head || steps.length === 0) return <p className="tip-empty">들어온 주문이 없어요. 키오스크나 배달 목업에서 주문을 넣어 보세요.</p>;
   return (
     <ol className="tip-list work-list">
-      {steps.map((step, index) => (
-        <li key={`${index}:${step.text}`} className={`tip-line work-${step.kind}${step.kind === 'done' ? ' tip-complete' : ''}`}>
+      {steps.map((step, index) => {
+        // 같은 계열 단계가 앞뒤로 붙어 있으면 같은 색 띠로 잇는다(연달아 만들기).
+        const linked = !!step.group && (steps[index - 1]?.group?.id === step.group.id || steps[index + 1]?.group?.id === step.group.id);
+        return (
+        <li key={`${index}:${step.text}`} className={`tip-line work-${step.kind}${step.kind === 'done' ? ' tip-complete' : ''}${linked ? ' work-linked' : ''}`}
+          style={linked ? { borderLeftColor: step.group!.color } : undefined}>
           <span className="tip-step">{index + 1}</span>
           <div className="work-step-body">
             <p className="tip-text">{step.text}</p>
+            {step.group && <span className="group-chip" style={{ color: step.group.color, borderColor: step.group.color }}>{step.group.name_kr}{linked ? ' · 연달아' : ''}</span>}
             {step.kind === 'done' && (
               <button type="button" className="card-button complete work-complete" disabled={busy} onClick={() => onComplete(head)}>{head.order_id} 완료</button>
             )}
           </div>
         </li>
-      ))}
+        );
+      })}
     </ol>
   );
 }

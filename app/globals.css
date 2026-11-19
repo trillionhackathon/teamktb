@@ -277,3 +277,7 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .stock-usage > div { display: flex; align-items: baseline; gap: 5px; }
 .stock-usage dt { color: var(--muted); font-size: 12px; }
 .stock-usage dd { margin: 0; font-weight: 680; font-variant-numeric: tabular-nums; }
+
+/* 비슷한 계열(Zoro가 레시피로 만든 data/menu_groups.json): 같은 계열은 같은 색 */
+.group-chip { display: inline-block; margin-left: 6px; padding: 1px 7px; border: 1px solid currentColor; border-radius: 999px; font-size: 12px; font-weight: 650; line-height: 1.5; background: #fff; white-space: nowrap; }
+.work-linked { border-left: 4px solid transparent; padding-left: 8px; }

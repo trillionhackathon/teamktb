@@ -60,7 +60,10 @@
     ],
     "elapsed_time_rule": "경과 시간은 접수 시각부터 고정. 재배치해도 안 바뀜 — 바뀌는 건 eta뿐",
     "promotion_rule": "1번 완료 → 2~4번이 1~3번으로 → 5~8번 중 하나를 골라 4번에 넣고 고정",
-    "spill_handling": "쏟음 등 재제조는 새 카드로 만들어 1번 슬롯에 직접 삽입 — 고정칸 예외이며 AI가 아니라 코드가 처리. work_tip 칸의 청소 안내와는 별개 이벤트"
+    "spill_handling": "쏟음 등 재제조는 새 카드로 만들어 1번 슬롯에 직접 삽입 — 고정칸 예외이며 AI가 아니라 코드가 처리. work_tip 칸의 청소 안내와는 별개 이벤트",
+    "quick_menu_sec": 90,
+    "quick_slots": 2,
+    "quick_rule": "제조 시간 quick_menu_sec초 이하 주문(아이스크림, 차 등)은 대기칸(5~8번) 앞 quick_slots칸까지 먼저 온 순서로 올린다. 화면 밖 대기열에 있어도 올라온다. 4번은 여전히 5~8번 중 Zoro가 고른다(코드 규칙, Zoro 문장에는 넣지 않음)."
   },
   "signals_schema": {
     "note": "5신호 묶음. 1~2초 안에 들어온 이벤트는 묶어서 한 번만 systemone 호출(README). order 신호의 세부 계산식은 menus 테이블과 아래 formula를 코드가 채운다.",

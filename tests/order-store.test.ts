@@ -103,6 +103,49 @@ describe('OrderStore board (8 slots, 1-4 locked, rule only)', () => {
   });
 });
 
+describe('OrderStore quick menu pull (kds_board quick_menu_sec / quick_slots)', () => {
+  const quickStore = () => new OrderStore({ catalog: menuCatalog, config: { ...config, quickMenuSec: 90, quickSlots: 2 } });
+  const iceCream = (id: string) => ({ request_id: id, channel: 'dine-in' as const, source: 'kiosk' as const, menu_items: [{ menu: 'ice_cream_vanilla', qty: 1 }] });
+
+  it('reads the setting from data/cafe_db.json', () => {
+    assert.equal(boardConfig.quickMenuSec, 90);
+    assert.equal(boardConfig.quickSlots, 2);
+  });
+
+  it('pulls quick orders (waiting, ≤ quick_menu_sec) to the front of the waiting slots, never into the locked 1-4', () => {
+    const plainStore = storeWithoutAi();
+    const plain = boardIds(plainStore);
+    const quick = plainStore.snapshot().board.slice(4).filter((o) => o.status === 'waiting' && o.remaining_work_seconds <= 90).map((o) => o.order_id).slice(0, 2);
+    const store = quickStore();
+    assert.ok(quick.length > 0);
+    const after = boardIds(store);
+    assert.deepEqual(after.slice(0, 4), plain.slice(0, 4));
+    assert.deepEqual(after.slice(4, 4 + quick.length), quick);
+    assert.deepEqual(after.slice(4 + quick.length), plain.slice(4).filter((id) => !quick.includes(id)));
+  });
+
+  it('pulls a new quick order out of the queue when a quick slot is free, in arrival order', () => {
+    const store = new OrderStore({ catalog: menuCatalog, config: { ...config, quickMenuSec: 90, quickSlots: 3 } });
+    const quickBefore = boardIds(store).slice(4, 6);
+    const first = store.createOrder(iceCream('q-1'));
+    const second = store.createOrder(iceCream('q-2'));
+    assert.ok('order' in first && 'order' in second);
+    assert.ok(first.order.remaining_work_seconds <= 90);
+    const after = boardIds(store);
+    assert.deepEqual(after.slice(4, 7), [...quickBefore, first.order.order_id]);
+    assert.equal(after.at(-1), second.order.order_id);
+  });
+
+  it('shows each item with its menu group', () => {
+    const store = quickStore();
+    const result = store.createOrder(iceCream('q-1'));
+    assert.ok('order' in result);
+    const card = store.snapshot().board.find((o) => o.order_id === result.order.order_id)!;
+    assert.equal(card.items[0].group?.id, 'g5');
+    assert.equal(card.items[0].group?.name_kr, '아이스크림');
+  });
+});
+
 describe('OrderStore work window', () => {
   it('writes what to do until 1 completes, then marks made and prepped orders on completion', () => {
     const store = storeWithoutAi();
