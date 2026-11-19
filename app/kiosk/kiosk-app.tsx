@@ -177,6 +177,7 @@ export default function KioskApp({ catalog, initialAvailability }: { catalog: Me
                 const unavailable = availability[drink.id];
                 return (
                   <button key={drink.id} type="button" className={`menu-card ${inCart ? 'in-cart' : ''}`} disabled={Boolean(unavailable)} onClick={() => setSelected(drink)}>
+                    <MenuPhoto id={drink.id} className="menu-photo" />
                     <span className="menu-card-top">
                       <span>{temperatureLabels[drink.temperature]}</span>
                       {unavailable ? <span className="menu-badge sold-out">{unavailable}</span> : drink.is_mvp && <span className="menu-badge">대표 메뉴</span>}
@@ -298,6 +299,14 @@ function useModal(onClose: () => void) {
   return { ref, onCancel: (e: SyntheticEvent) => { e.preventDefault(); onClose(); } };
 }
 
+// 메뉴 사진은 public/menu/<메뉴 id>.jpg. 파일이 없으면 칸을 그리지 않는다.
+function MenuPhoto({ id, className }: { id: string; className: string }) {
+  const [missing, setMissing] = useState(false);
+  if (missing) return null;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className={className} src={`/menu/${id}.jpg`} alt="" loading="lazy" onError={() => setMissing(true)} />;
+}
+
 function OptionDialog({ catalog, drink, onClose, onAdd }: { catalog: MenuCatalog; drink: MenuDrink; onClose: () => void; onAdd: (line: OrderLine) => void }) {
   const { ref, onCancel } = useModal(onClose);
   const [size, setSize] = useState<SizeId>(drink.sizes[0] ?? 'R');
@@ -313,6 +322,7 @@ function OptionDialog({ catalog, drink, onClose, onAdd }: { catalog: MenuCatalog
   return (
     <dialog ref={ref} className="kiosk-dialog" aria-labelledby="option-title" onCancel={onCancel}>
       <div className="dialog-heading">
+        <MenuPhoto id={drink.id} className="dialog-photo" />
         <p className="board-context">{catalog.categories.find(({ id }) => id === drink.category)?.name_kr} · {temperatureLabels[drink.temperature]}</p>
         <h2 id="option-title">{drink.name_kr}</h2>
         <p className="dialog-sub">{formatPrice(drink.price_krw)} · 첫 잔 {formatDuration(drink.first_cup_sec)}, 추가 잔 {formatDuration(drink.additional_cup_sec)}</p>
