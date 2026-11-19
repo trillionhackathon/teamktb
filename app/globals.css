@@ -69,32 +69,44 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
-.board-empty { grid-column: 1 / -1; padding: 28px 12px; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--muted); text-align: center; }
-.order-ticket {
+/* 칸 틀은 크기와 자리가 고정이다. 순서가 바뀌면 틀은 그대로 두고 ticket-body만 교체되며 짧게 페이드인한다. */
+.board-slot {
   display: flex;
   flex-direction: column;
   gap: 5px;
   min-width: 0;
-  min-height: 140px;
+  height: 214px;
   padding: 12px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+  transition: background-color .3s ease, border-color .3s ease, box-shadow .3s ease;
 }
-.order-ticket.recommended { border-color: #85add2; box-shadow: inset 0 0 0 1px #85add2; }
-.order-ticket.moved { background: var(--event-surface); }
-.order-ticket.blocked { background: var(--soft); }
-.ticket-slot { display: flex; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.board-slot.empty { border-style: dashed; background: transparent; }
+.board-slot.recommended { border-color: #85add2; box-shadow: inset 0 0 0 1px #85add2; }
+.board-slot.moved { background: var(--event-surface); }
+.board-slot.blocked { background: var(--soft); }
+.slot-empty { margin: auto; color: #9aa1ab; font-size: 13px; }
+.slot-move { color: var(--event-ink); font-size: 12px; font-weight: 720; white-space: nowrap; }
+.ticket-body { display: flex; flex: 1; flex-direction: column; gap: 5px; min-height: 0; animation: slot-swap .32s ease-out; }
+.board-slot .order-items { flex: 1; min-height: 0; overflow: hidden; align-content: start; }
+.ticket-flags { display: grid; gap: 1px; flex-shrink: 0; max-height: 32px; overflow: hidden; }
+.ticket-flags > p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes slot-swap { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ticket-body, .rank-order { animation: none; } }
+.ticket-slot { display: flex; flex-shrink: 0; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .ticket-flag { color: var(--accent-ink); font-size: 12px; font-weight: 680; }
 .ticket-flag.flag-event { color: var(--event-ink); }
 .ticket-flag.flag-confirm { color: #8a5a00; }
 .ticket-flag.flag-blocked { color: var(--muted); }
 .ticket-button { min-height: 30px; padding: 3px 10px; border: 1px solid var(--dark); border-radius: 7px; background: var(--dark); color: #fff; font-size: 13px; font-weight: 680; }
 .ticket-button:disabled { border-color: var(--line); background: var(--soft); color: var(--muted); }
-.queue-strip { display: flex; align-items: flex-start; gap: 12px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); font-size: 13px; }
+.queue-strip { display: flex; align-items: center; gap: 12px; height: 40px; margin-top: 10px; padding: 0 12px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); font-size: 13px; }
 .queue-label { flex-shrink: 0; font-weight: 700; }
-.queue-strip ol { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 0; list-style: none; }
+.queue-strip ol { display: flex; gap: 16px; min-width: 0; margin: 0; padding: 0; overflow: hidden; list-style: none; white-space: nowrap; }
 .queue-strip li span { margin-left: 6px; color: var(--muted); }
+.queue-empty { color: var(--muted); }
 .ticket-top, .ticket-meta, .ticket-bottom { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
 .ticket-top, .ticket-meta, .ticket-bottom, .ticket-note { color: var(--muted); font-size: 13px; }
 .ticket-meta, .ticket-bottom { font-variant-numeric: tabular-nums; }
@@ -108,7 +120,7 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .ticket-status { color: var(--muted); font-size: 13px; font-weight: 650; letter-spacing: 0; }
 .recommended .ticket-status { color: var(--accent-ink); }
 .order-items { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.order-ticket .order-items { padding-block: 8px; border-top: 1px solid var(--line); }
+.board-slot .order-items { padding-block: 8px; border-top: 1px solid var(--line); }
 .order-item-main { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 15px; line-height: 1.2; }
 .order-item-main strong { min-width: 0; overflow-wrap: anywhere; font-weight: 680; }
 .order-item-main > span, .order-item-note { color: var(--muted); font-size: 13px; }
@@ -138,8 +150,11 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
   overscroll-behavior-block: contain;
   list-style: none;
 }
-.ranking-list { max-height: 208px; }
-.rank-row { min-height: 47px; border-top: 1px solid var(--line); }
+.ranking-list { overflow: visible; }
+.rank-row { height: 52px; border-top: 1px solid var(--line); transition: background-color .3s ease; }
+.rank-row.rank-empty { color: #9aa1ab; }
+.rank-order { min-width: 0; animation: slot-swap .32s ease-out; }
+.rank-order strong, .rank-order p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rank-row.rank-first { background: var(--soft); }
 .rank-row.rank-event { background: var(--event-surface); }
 .rank-position { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
@@ -158,7 +173,6 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .ai-tips li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
 .ai-tips span { color: var(--accent-ink); font-size: 13px; font-weight: 700; }
 .tip-dismiss { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; }
-.empty-rank { padding: 14px 8px; color: var(--muted); }
 
 .event-log { padding: 11px 12px; border-radius: 8px; background: var(--soft); }
 .event-log.event-applied { background: var(--event-surface); }

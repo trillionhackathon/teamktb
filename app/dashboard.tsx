@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi, createRequestId, orderPath } from './client/api.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
 import type { MenuItemInput } from './domain/types.ts';
@@ -63,36 +63,21 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const [autoReceive, setAutoReceive] = useState(false);
   const [scenarioId, setScenarioId] = useState(snapshot.scenario?.id ?? '');
   const demoIndex = useRef(0);
-  const boardRef = useRef<HTMLDivElement>(null);
-  const previousPositions = useRef(new Map<string, DOMRect>());
 
   const { board, config, decision } = snapshot;
   const visible = board.filter(({ zone }) => zone !== 'queue');
   const queue = board.filter(({ zone }) => zone === 'queue');
-  const flexible = board.filter(({ zone }) => zone === 'flexible');
   const active = board.find(({ status }) => status === 'in_progress');
   const next = active ?? board.find(({ status, blocked_reason: blocked }) => status === 'waiting' && !blocked);
   const latestEvent = snapshot.events[0];
+  // 칸 틀은 주문 수와 상관없이 항상 1~visibleCount번을 그린다. 순서가 바뀌면 칸은 그대로 두고 칸 안의 주문만 교체한다.
+  const slots = Array.from({ length: config.visibleCount }, (_, index) => ({ slot: index + 1, order: visible.find(({ slot }) => slot === index + 1) }));
+  const flexibleSlots = slots.slice(config.lockedCount);
+  const moveTo = (slot: number) => decision.moves.find(({ to }) => to === slot);
 
   useEffect(() => {
     if (snapshot.scenario) setScenarioId(snapshot.scenario.id);
   }, [snapshot.scenario?.id]);
-
-  // 순서가 바뀐 카드는 이전 자리에서 새 자리로 미끄러지듯 이동한다.
-  useLayoutEffect(() => {
-    const cards = boardRef.current?.querySelectorAll<HTMLElement>('[data-order-id]');
-    if (!cards) return;
-    const positions = new Map(Array.from(cards, (card) => [card.dataset.orderId!, card.getBoundingClientRect()]));
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      for (const card of cards) {
-        const previous = previousPositions.current.get(card.dataset.orderId!);
-        const current = positions.get(card.dataset.orderId!)!;
-        if (!previous || (previous.left === current.left && previous.top === current.top)) continue;
-        card.animate([{ transform: `translate(${previous.left - current.left}px, ${previous.top - current.top}px)` }, { transform: 'translate(0, 0)' }], { duration: 260, easing: 'ease-out' });
-      }
-    }
-    previousPositions.current = positions;
-  });
 
   useEffect(() => {
     if (!autoReceive) return;
@@ -163,49 +148,60 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             <h2 id="orders-title">주문 보드</h2>
             <span className="panel-meta">윗줄 1~{config.lockedCount}번 접수순 고정 · 아랫줄 {config.lockedCount + 1}~{config.visibleCount}번 재배치</span>
           </div>
-          <div className="board-grid" ref={boardRef} role="region" aria-label="2줄 5칸 주문 보드" tabIndex={0}>
-            {visible.map((order) => (
-              <article
-                key={order.order_id}
-                data-order-id={order.order_id}
-                className={`order-ticket${order.order_id === next?.order_id ? ' recommended' : ''}${order.move_reason ? ' moved' : ''}${order.blocked_reason ? ' blocked' : ''}`}
-                aria-label={`${order.slot}번 칸 ${order.order_id} 주문`}
-              >
-                <div className="ticket-slot">
-                  <span>{order.slot}번 칸 · {order.zone === 'locked' ? '고정' : '재배치'}</span>
-                  <span className="ticket-status">{order.status === 'in_progress' ? '제조 중' : order.order_id === next?.order_id ? '다음 작업' : ''}</span>
-                </div>
-                <div className="ticket-top">
-                  <strong className="order-number">{order.order_id}</strong>
-                  <div className="ticket-channel"><span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span><span>{order.source_label}</span></div>
-                </div>
-                <div className="ticket-meta"><span>{formatClock(order.received_at)} 접수</span><span>{formatElapsed(order.received_at, now)}</span></div>
-                <OrderItems items={order.items} />
-                {order.move_reason && <p className="ticket-flag flag-event">{order.move_reason}</p>}
-                <OrderFlags order={order} />
-                <div className="ticket-bottom">
-                  <span>완료 {waitLabel(order.eta_seconds)}</span>
-                  {order.status === 'in_progress'
-                    ? <button type="button" className="ticket-button" disabled={busy} onClick={() => changeStatus(order, 'complete')}>완료</button>
-                    : <button type="button" className="ticket-button" disabled={busy || Boolean(order.blocked_reason)} onClick={() => changeStatus(order, 'start')}>시작</button>}
-                </div>
-              </article>
-            ))}
-            {visible.length === 0 && <p className="board-empty">대기 중인 주문이 없어요. 키오스크나 배달 목업에서 주문을 넣어 보세요.</p>}
+          <div className="board-grid" role="region" aria-label="2줄 5칸 주문 보드" tabIndex={0}>
+            {slots.map(({ slot, order }) => {
+              const locked = slot <= config.lockedCount;
+              const slotMove = moveTo(slot);
+              const move = order && slotMove?.order_id === order.order_id ? slotMove : undefined;
+              return (
+                <article
+                  key={slot}
+                  className={`board-slot${order ? '' : ' empty'}${order && order.order_id === next?.order_id ? ' recommended' : ''}${order?.move_reason ? ' moved' : ''}${order?.blocked_reason ? ' blocked' : ''}`}
+                  aria-label={order ? `${slot}번 칸 ${order.order_id} 주문` : `${slot}번 칸 비어 있음`}
+                >
+                  <div className="ticket-slot">
+                    <span>{slot}번 칸 · {locked ? '고정' : '재배치'}</span>
+                    {move
+                      ? <span className="slot-move" role="img" aria-label={`${move.from}번에서 ${move.to}번으로 이동`}>↑ {move.from}번에서</span>
+                      : <span className="ticket-status">{order?.status === 'in_progress' ? '제조 중' : order && order.order_id === next?.order_id ? '다음 작업' : ''}</span>}
+                  </div>
+                  {order ? (
+                    <div className="ticket-body" key={order.order_id}>
+                      <div className="ticket-top">
+                        <strong className="order-number">{order.order_id}</strong>
+                        <div className="ticket-channel"><span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span><span>{order.source_label}</span></div>
+                      </div>
+                      <div className="ticket-meta"><span>{formatClock(order.received_at)} 접수</span><span>{formatElapsed(order.received_at, now)}</span></div>
+                      <OrderItems items={order.items} />
+                      <div className="ticket-flags">
+                        {order.move_reason && <p className="ticket-flag flag-event">{order.move_reason}</p>}
+                        <OrderFlags order={order} />
+                      </div>
+                      <div className="ticket-bottom">
+                        <span>완료 {waitLabel(order.eta_seconds)}</span>
+                        {order.status === 'in_progress'
+                          ? <button type="button" className="ticket-button" disabled={busy} onClick={() => changeStatus(order, 'complete')}>완료</button>
+                          : <button type="button" className="ticket-button" disabled={busy || Boolean(order.blocked_reason)} onClick={() => changeStatus(order, 'start')}>시작</button>}
+                      </div>
+                    </div>
+                  ) : <p className="slot-empty">빈 칸</p>}
+                </article>
+              );
+            })}
           </div>
-          {queue.length > 0 && (
-            <div className="queue-strip" aria-label="화면 밖 대기열">
-              <span className="queue-label">대기열 {queue.length}건</span>
-              <ol>
-                {queue.map((order) => (
-                  <li key={order.order_id}>
-                    <strong>{order.order_id}</strong> {order.items.map(({ name, qty }) => `${name} ${qty}잔`).join(', ')}
-                    <span>{order.channel_label} · {order.source_label} · 완료 {waitLabel(order.eta_seconds)}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
+          <div className="queue-strip" aria-label="화면 밖 대기열">
+            <span className="queue-label">대기열 {queue.length}건</span>
+            {queue.length > 0
+              ? <ol>
+                  {queue.map((order) => (
+                    <li key={order.order_id}>
+                      <strong>{order.order_id}</strong> {order.items.map(({ name, qty }) => `${name} ${qty}잔`).join(', ')}
+                      <span>{order.channel_label} · 완료 {waitLabel(order.eta_seconds)}</span>
+                    </li>
+                  ))}
+                </ol>
+              : <span className="queue-empty">10번 칸 뒤에 기다리는 주문이 없어요.</span>}
+          </div>
         </section>
 
         <div className="dashboard-grid">
@@ -216,23 +212,24 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             </div>
             <div className="ranking-labels" aria-hidden="true"><span>칸</span><span>재배치 대상</span><span>완료</span></div>
             <ol className="ranking-list" aria-label="재배치칸 판단 결과" tabIndex={0}>
-              {flexible.map((order) => {
-                const move = decision.moves.find(({ order_id: id }) => id === order.order_id);
+              {flexibleSlots.map(({ slot, order }) => {
+                const move = order ? decision.moves.find(({ order_id: id }) => id === order.order_id) : undefined;
                 return (
-                  <li className={`rank-row${move ? ' rank-event' : ''}`} key={order.order_id}>
+                  <li className={`rank-row${move ? ' rank-event' : ''}${order ? '' : ' rank-empty'}`} key={slot}>
                     <div className="rank-position">
-                      <strong>{order.slot}</strong>
+                      <strong>{slot}</strong>
                       {move && <span className="rank-movement up" role="img" aria-label={`${move.from}번에서 ${move.to}번으로 이동`}>↑{move.from - move.to}</span>}
                     </div>
-                    <div className="rank-order">
-                      <strong><span>{order.order_id}</span> {[...new Set(order.items.map(({ name }) => name))].join(', ')}</strong>
-                      <p>{order.blocked_reason ?? order.move_reason ?? (order.status === 'in_progress' ? '제조 중' : '접수순 유지')}</p>
-                    </div>
-                    <strong className="rank-score">{waitLabel(order.eta_seconds)}</strong>
+                    {order ? (
+                      <div className="rank-order" key={order.order_id}>
+                        <strong><span>{order.order_id}</span> {[...new Set(order.items.map(({ name }) => name))].join(', ')}</strong>
+                        <p>{order.blocked_reason ?? order.move_reason ?? (order.status === 'in_progress' ? '제조 중' : '접수순 유지')}</p>
+                      </div>
+                    ) : <div className="rank-order"><p>빈 칸</p></div>}
+                    <strong className="rank-score">{order ? waitLabel(order.eta_seconds) : ''}</strong>
                   </li>
                 );
               })}
-              {flexible.length === 0 && <li className="empty-rank">재배치할 6~10번 칸 주문이 없어요.</li>}
             </ol>
             {snapshot.tips.length > 0 && (
               <ul className="ai-tips" aria-label="일머리 팁">
