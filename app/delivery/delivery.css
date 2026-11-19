@@ -12,3 +12,12 @@
 .delivery-form .action-button:disabled { background: var(--soft); color: var(--muted); }
 .delivery-result { margin: 14px 0 9px; color: var(--muted); }
 .delivery-result strong { color: var(--text); }
+.delivery-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.delivery-total { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.delivery-status { margin-top: 16px; padding: 20px; }
+.delivery-empty { color: var(--muted); font-size: 14px; }
+.delivery-orders { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.delivery-orders > li { padding: 12px 0; border-top: 1px solid var(--line); }
+.delivery-order-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 14px; }
+.delivery-order-head > span:last-child { margin-left: auto; color: var(--muted); font-size: 13px; }
+.delivery-order-state { margin-top: 4px; color: var(--muted); font-size: 13px; }
