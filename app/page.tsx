@@ -5,6 +5,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 're
 import { appendDemoOrder, appendOrder, formatTime, initialOrders, initialTime, situationExamples, type OrderItem } from './demo-data';
 import { decideDemoPriority, rankWaitingOrders, type PriorityAdjustment } from './demo-priority';
 import { isOrderDetails, openOrderChannel } from './order-channel';
+import { fromAiOrderId, moveReasonLabels } from './ai/contract';
+import { applyAiOrder, useAiDecision } from './ai/use-ai-decision';
 
 const initialEventOrder = initialOrders[2];
 
@@ -93,11 +95,21 @@ export default function Dashboard() {
   });
 
   const waiting = orders.filter((order) => order.id !== activeId && !completed.includes(order.id));
-  const ranked = rankWaitingOrders(waiting, adjustment);
+  const clock = initialTime + orders.length - initialOrders.length;
+  const riderArrivedIds = waiting.some(({ id, channel }) => id === adjustment.id && channel === '배달') ? [adjustment.id] : [];
+  const aiDecision = useAiDecision(waiting, clock, riderArrivedIds);
+  const demoRanked = rankWaitingOrders(waiting, adjustment);
+  // AI 서버가 응답하면 그 순서(1~5번 접수순 고정, 6~10번 재배치)를 쓰고, 연결되지 않으면 예시 판단으로 보여준다.
+  const ranked = aiDecision.status === 'ready'
+    ? applyAiOrder(demoRanked, aiDecision.result, fromAiOrderId).map((order) => ({ ...order, reason: moveReasonLabels[order.reason] ?? order.reason }))
+    : demoRanked;
+  const aiStatusLabel = aiDecision.status === 'ready'
+    ? (aiDecision.result.fallback ? 'AI 서버 · 규칙 판단' : 'AI 서버 · Zoro 판단')
+    : aiDecision.status === 'pending' ? 'AI 서버 확인 중' : '예시 판단 · AI 서버 미연결';
+  const aiTips = aiDecision.status === 'ready' ? aiDecision.result.tips : [];
   const active = orders.find((order) => order.id === activeId);
   const next = active ?? ranked[0];
   const singleItem = next?.items.length === 1 ? next.items[0] : undefined;
-  const clock = initialTime + orders.length - initialOrders.length;
   const tickets = [
     ...(active ? [{ order: active, status: '제조 중', recommended: false }] : []),
     ...ranked.map((order, index) => ({ order, status: `${index + 1}순위`, recommended: index === 0 })),
@@ -185,7 +197,7 @@ export default function Dashboard() {
           <section className="panel ranking-panel" aria-labelledby="ranking-title">
             <div className="panel-heading">
               <h2 id="ranking-title">Zoro 우선순위 판단</h2>
-              <span className="panel-meta">예시 판단</span>
+              <span className="panel-meta" title={aiDecision.status === 'unavailable' ? aiDecision.error : undefined}>{aiStatusLabel}</span>
             </div>
             <div className="ranking-labels" aria-hidden="true"><span>순위</span><span>추천 주문</span><span>점수 / 100</span></div>
             <ol className="ranking-list" aria-label="접수 순서 대비 추천 순위" tabIndex={0}>
@@ -213,6 +225,11 @@ export default function Dashboard() {
               })}
               {ranked.length === 0 && <li className="empty-rank">대기 중인 주문이 없어요.</li>}
             </ol>
+            {aiTips.length > 0 && (
+              <ul className="ai-tips" aria-label="일머리 팁">
+                {aiTips.map((tip) => <li key={tip.id}><span>일머리 팁</span>{tip.text}</li>)}
+              </ul>
+            )}
           </section>
 
           <section className="panel event-panel" aria-labelledby="event-title">

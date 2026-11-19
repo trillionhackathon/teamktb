@@ -137,6 +137,8 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .rank-score { font-size: 17px; font-weight: 740; text-align: right; font-variant-numeric: tabular-nums; }
 .rank-first .rank-score { color: var(--accent-ink); }
 .rank-event .rank-score { color: var(--event-ink); }
+.ai-tips { display: grid; gap: 4px; margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--soft); list-style: none; font-size: 14px; }
+.ai-tips span { margin-right: 8px; color: var(--accent-ink); font-size: 13px; font-weight: 700; }
 .empty-rank { padding: 14px 8px; color: var(--muted); }
 
 .event-log { padding: 11px 12px; border-radius: 8px; background: var(--soft); }
