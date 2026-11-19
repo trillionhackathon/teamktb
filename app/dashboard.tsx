@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { callApi, orderPath } from './client/api.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
+import { taskLineColors } from './domain/review.ts';
 import type { BoardReview, Decision, Note, QuickLane, Slot4Info } from './domain/types.ts';
 import type { BoardSnapshot, OrderView } from './domain/views.ts';
 import type { AgentResponse } from './api/agent/route.ts';
@@ -105,11 +106,13 @@ function rowColumns(orders: (OrderView | undefined)[]): CSSProperties {
   return { '--cols': orders.map((order) => `minmax(0, ${order ? weightFor(order.items.length) : 1}fr)`).join(' ') } as CSSProperties;
 }
 
-function OrderLines({ order }: { order: OrderView }) {
+// colors: 줄 번호 → 그 줄이 들어간 일머리 팁 제조 블록 색. 같이 만들 메뉴 줄만 블록 색으로 하이라이트한다(주문 카드 전체는 칠하지 않는다).
+function OrderLines({ order, colors }: { order: OrderView; colors?: Record<number, string> }) {
   return (
     <ul className={`card-items cols-${columnsFor(order.items.length)}`}>
       {order.items.map((item, index) => (
-        <li key={index} className={item.made ? 'item-made' : undefined}>
+        <li key={index} className={[item.made ? 'item-made' : '', colors?.[index] ? 'in-task' : ''].filter(Boolean).join(' ') || undefined}
+          style={colors?.[index] ? ({ '--line-color': colors[index] } as CSSProperties) : undefined}>
           <span className="item-name">{item.name}</span>
           <span className="item-qty">{item.qty}{item.unit}</span>
           {item.options.length > 0 && <span className="item-options">{item.options.map((option) => (item.note_options?.includes(option) ? `${option}(메모)` : option)).join(', ')}</span>}
@@ -124,20 +127,27 @@ type Flag = { text: string; tone: string };
 // 요청사항 메모 줄. 카드가 작아서 꼭 볼 것만 띄운다(전체는 상세 창).
 // 1) 배달 칸에 적힌 가게 요청을 반영했으면 "배달 칸 메모 반영: 1잔 디카페인" 2) ⚠ 문구(같은 문구는 한 번) 3) 반영하지 않은 메모 원문.
 // 가게 칸 메모로 붙인 옵션은 메뉴 줄에 "(메모)"로 보이므로 따로 쓰지 않는다. 배달 칸의 가게 일 아닌 문장(문 앞에 두세요 등)은 띄우지 않는다.
-function noteFlags(order: OrderView): Flag[] {
+// 확실히 불필요한 메모(가게 일 아님 확신 0.9 이상, 또는 배달 칸의 라이더 몫)는 따로 돌려준다. 카드에서는 접어 두고 펼치면 삭선으로 보인다.
+function noteFlags(order: OrderView): { flags: Flag[]; dismissed: string[] } {
   const note = order.note_read;
-  if (!note) return order.request_note ? [{ text: `메모 ${order.request_note}`, tone: 'muted' }] : [];
-  if (note.status === 'checking') return [{ text: 'Zoro가 메모를 읽는 중', tone: 'muted' }];
-  const shown = note.sentences.filter(({ hidden }) => !hidden);
+  if (!note) return { flags: order.request_note ? [{ text: `메모 ${order.request_note}`, tone: 'muted' }] : [], dismissed: [] };
+  if (note.status === 'checking') return { flags: [{ text: 'Zoro가 메모를 읽는 중', tone: 'muted' }], dismissed: [] };
+  const shown = note.sentences.filter(({ dismissed }) => !dismissed);
   const warnings = [...new Set(shown.filter(({ check, resolved }) => check && !resolved).flatMap(({ check }) => check!.split(' · ')))];
-  return [
-    ...shown.filter(({ applied, moved }) => applied && moved).map(({ label }) => ({ text: label, tone: 'ok' })),
-    ...warnings.map((text) => ({ text: `⚠ ${text}`, tone: 'warn' })),
-    ...shown.filter(({ applied }) => !applied).map(({ label }) => ({ text: label, tone: 'muted' })),
-  ];
+  return {
+    flags: [
+      ...shown.filter(({ applied, moved }) => applied && moved).map(({ label }) => ({ text: label, tone: 'ok' })),
+      ...warnings.map((text) => ({ text: `⚠ ${text}`, tone: 'warn' })),
+      ...shown.filter(({ applied }) => !applied).map(({ label }) => ({ text: label, tone: 'muted' })),
+    ],
+    dismissed: note.sentences.filter(({ dismissed }) => dismissed).map(({ label }) => label),
+  };
 }
 
-function OrderFlags({ order }: { order: OrderView }) {
+// 카드의 표시 줄. 불필요한 메모는 "불필요한 메모 n개"로 접어 두고, 누르면 삭선으로 펼친다(상세 창에서는 처음부터 펼친다).
+function OrderFlags({ order, showDismissed = false }: { order: OrderView; showDismissed?: boolean }) {
+  const [open, setOpen] = useState(showDismissed);
+  const note = noteFlags(order);
   const flags = [
     order.made && { text: '✔ 만듦', tone: 'ok' },
     !order.made && order.prepped && { text: '재료 준비됨', tone: 'ok' },
@@ -145,10 +155,22 @@ function OrderFlags({ order }: { order: OrderView }) {
     order.rider_status === 'arrived' && { text: '라이더 도착', tone: 'danger' },
     order.needs_confirmation && { text: '⚠ 확인 필요', tone: 'warn' },
     (order.overtaken ?? 0) > 0 && { text: `${order.overtaken}번 밀림`, tone: 'warn' },
-    ...noteFlags(order),
+    ...note.flags,
   ].filter((flag): flag is Flag => Boolean(flag));
-  if (flags.length === 0) return null;
-  return <div className="card-flags">{flags.map(({ text, tone }, index) => <p key={index} className={`card-flag tone-${tone}`} title={text}>{text}</p>)}</div>;
+  if (flags.length === 0 && note.dismissed.length === 0) return null;
+  return (
+    <div className="card-flags">
+      {flags.map(({ text, tone }, index) => <p key={index} className={`card-flag tone-${tone}`} title={text}>{text}</p>)}
+      {note.dismissed.length > 0 && !showDismissed && (
+        <button type="button" className="card-flag-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          {open ? '▾' : '▸'} 불필요한 메모 {note.dismissed.length}개
+        </button>
+      )}
+      {(open || showDismissed) && note.dismissed.map((text, index) => (
+        <p key={`dismissed-${index}`} className="card-flag tone-muted is-dismissed" title={`불필요한 메모: ${text}`}><s>{text}</s></p>
+      ))}
+    </div>
+  );
 }
 
 // 4번 칸 표시: "Zoro 고르는 중"(4번 칸이 빈 채로 Zoro 답을 기다림), "Zoro 0.78", "룰"(Zoro가 답하지 못함).
@@ -193,14 +215,14 @@ function NoteDetail({ order, busy, onNote }: { order: OrderView; busy: boolean; 
       <ul className="note-sentences">
         {note.sentences.map((sentence) => (
           <li key={sentence.id} className={sentence.check && !sentence.resolved ? 'needs-check' : undefined}>
-            <p className="note-sentence-text"><span className="note-field">{sentence.field === 'rider' ? '배달 칸' : '가게 칸'}</span>"{sentence.text}"</p>
+            <p className="note-sentence-text"><span className="note-field">{sentence.field === 'rider' ? '배달 칸' : '가게 칸'}</span>{sentence.dismissed ? <s>"{sentence.text}"</s> : `"${sentence.text}"`}</p>
             {sentence.kind && (
               <p className="note-sentence-zoro">
                 Zoro: {noteKindLabels[sentence.kind]}{sentence.option_name ? ` · ${sentence.option_name}` : ''}{sentence.confidence !== undefined ? ` · 확신 ${sentence.confidence.toFixed(2)}` : ''}
                 {sentence.moved ? ' · 배달 칸에 적힌 가게 일' : ''}
               </p>
             )}
-            <p className="note-sentence-result">{sentence.hidden ? '카드에 띄우지 않음 (라이더 몫)' : sentence.label}{sentence.resolved ? ' · 확인함' : ''}</p>
+            <p className="note-sentence-result">{sentence.dismissed ? `불필요한 메모라 카드에서 접고 줄을 그었어요${sentence.kind === 'delivery' ? ' (배달 기사 몫)' : ''}` : sentence.label}{sentence.resolved ? ' · 확인함' : ''}</p>
             {sentence.check && !sentence.resolved && <p className="note-sentence-check">⚠ {sentence.check}</p>}
             {open && sentence.check && !sentence.resolved && (
               <div className="note-sentence-actions">
@@ -231,7 +253,7 @@ function OrderDetail({ order, slot4, now, busy, onNote }: { order: OrderView; sl
       </dl>
       <h3>주문 메뉴</h3>
       <OrderLines order={order} />
-      <OrderFlags order={order} />
+      <OrderFlags order={order} showDismissed />
       <NoteDetail order={order} busy={busy} onNote={onNote} />
       {slot4 && slot4.order_id === order.order_id && <Slot4Reason slot4={slot4} full />}
     </>
@@ -246,7 +268,7 @@ function NoteCard({ note, busy, next, onComplete }: { note: Note; busy: boolean;
       <div className="note-body">
         {next && <span className="task-next">다음 작업</span>}
         <p className="note-text">{withOrderIds(note.text)}</p>
-        {note.parts && <p className="task-parts">{withOrderIds(note.parts.map((part) => `${part.order_id} ${part.qty}${note.unit ?? '잔'}`).join(' · '))}</p>}
+        {note.parts && <p className="task-parts">{withOrderIds(note.parts.map((part) => `${part.order_id} ${part.name ? `${part.name} ` : ''}${part.qty}${note.unit ?? '잔'}`).join(' · '))}</p>}
         {note.detail && <p className="note-detail">{withOrderIds(note.detail)}</p>}
         {note.reason && <p className="note-detail">{withOrderIds(note.reason)}</p>}
         {note.zoro && <p className="note-zoro">{withOrderIds(note.zoro)}</p>}
@@ -340,8 +362,10 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const aiStatus = snapshot.decision.ai_status;
   const visibleNotes = snapshot.notes.filter((note) => note.kind !== 'head');
   const taskNotes = visibleNotes.filter((note) => note.kind === 'task');
-  // 위 4칸 카드 색: 그 주문이 낀 작업(아래 팁 칸)과 같은 색을 쓴다. 한 주문이 작업 여러 개에 걸치면 마지막 작업 색을 쓴다(드묾).
-  const orderTaskColor = Object.fromEntries(taskNotes.flatMap((note) => note.parts?.map(({ order_id }) => [order_id, note.color!]) ?? []));
+  // 위 4칸 메뉴 줄 색: 그 줄이 들어간 제조 블록(아래 일머리 팁)과 같은 색. 카드 전체가 아니라 줄 단위로 칠한다.
+  const lineColors = taskLineColors(taskNotes);
+  const orderLineColors = (orderId: string, count: number): Record<number, string> =>
+    Object.fromEntries(Array.from({ length: count }, (_, index) => [index, lineColors[`${orderId}:${index}`]]).filter(([, color]) => color));
   const nextTaskId = visibleNotes.find((note) => note.kind === 'task' && !note.done)?.id;
   const { agent, refresh: refreshAgent } = useAgent(snapshot.board.slice(0, FIXED_COUNT + WAITING_COUNT).map(({ order_id: id }) => id), snapshot.state_version);
   const { summary: agentSummary, log: agentLog, dismissItem } = useAgentLog(agent);
@@ -491,10 +515,8 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                 const slot = index + 1;
                 if (!order) return <div key={slot} role="listitem" className="quest-card empty"><span className="slot-number">{slot}</span><p className="card-empty">빈 칸</p></div>;
                 const group = review.groups[order.order_id];
-                const color = group && (orderTaskColor[order.order_id] ?? group.color);
                 return (
-                  <article key={slot} role="listitem" className={`quest-card fixed${group ? ' grouped' : ''}${order.made ? ' is-made' : ''}`}
-                    style={color ? ({ '--group': color } as CSSProperties) : undefined}
+                  <article key={slot} role="listitem" className={`quest-card fixed${group ? ' in-group' : ''}${order.made ? ' is-made' : ''}`}
                     aria-label={`${slot}번 칸 ${order.order_id} 주문${group ? `, ${groupTagText(group)}` : ''}`}>
                     <div className="card-body" key={order.order_id}>
                       <button type="button" className="card-detail-trigger" aria-label={`${order.order_id} 주문 상세 보기`} aria-haspopup="dialog" onClick={() => setSelectedOrder(order)} />
@@ -504,8 +526,8 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                         <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
                         <span className="card-detail-arrow" aria-hidden="true" />
                       </div>
-                      <p className="card-wait">{formatElapsed(order.received_at, now)}{group && <span className="group-tag" style={{ background: color }}>{groupTagText(group)}</span>}</p>
-                      <OrderLines order={order} />
+                      <p className="card-wait">{formatElapsed(order.received_at, now)}{group && <span className="group-tag">{groupTagText(group)}</span>}</p>
+                      <OrderLines order={order} colors={orderLineColors(order.order_id, order.items.length)} />
                       <OrderFlags order={order} />
                       <div className="card-foot">
                         <button type="button" className="card-button complete" disabled={busy} onClick={() => completeOrder(order)}>{index === 0 ? '완료' : '먼저 완료'}</button>

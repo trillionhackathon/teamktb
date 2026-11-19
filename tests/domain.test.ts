@@ -5,7 +5,7 @@ import { menuCatalog, ownerRules } from '../app/domain/catalog-data.ts';
 import { interpretEvent, parseEtaSeconds } from '../app/domain/events.ts';
 import { buildFacts, lockedLine } from '../app/domain/facts.ts';
 import { normalizeLine, orderPrice, orderWorkSeconds, stockNeeded, toggleOption } from '../app/domain/menu.ts';
-import { taskLineColors } from '../app/domain/review.ts';
+import { taskBlocks, taskLineColors, taskText } from '../app/domain/review.ts';
 import { findScenario, sharedBoardOrders } from '../app/domain/scenarios.ts';
 import type { Order, OrderLine } from '../app/domain/types.ts';
 import { buildWorkWindow } from '../app/domain/work-window.ts';
@@ -262,5 +262,19 @@ describe('scenarios (data/scenarios.json)', () => {
     assert.equal(findScenario('SC-A')?.triggers.length, 2);
     const scC = findScenario('SC-C')?.triggers[0];
     assert.ok(scC?.kind === 'event' && scC.signal?.inventory?.coffee_beans_shots_left === 12);
+  });
+});
+
+describe('task blocks (일머리 팁): menus made together share one block', () => {
+  const line = (menu: string, qty: number, options: string[] = []) => ({ menu, qty, size: 'R' as const, options });
+  it('links lines by the same menu or a shared machine other than ice, and keeps blocking options apart', () => {
+    const lines = [line('latte', 1), line('iced_americano', 2), line('lemon_ade', 1), line('cold_brew', 1), line('latte', 1, ['decaf']), line('strawberry_smoothie', 1), line('mango_smoothie', 1)];
+    assert.deepEqual(taskBlocks(lines, menuCatalog), [[0, 1], [2], [3], [4], [5, 6]]);
+  });
+
+  it('writes one sentence per block with making options only', () => {
+    assert.equal(taskText([line('iced_americano', 1, ['no_straw']), line('iced_americano', 1, ['no_straw', 'shot_light'])], menuCatalog), '아이스 아메리카노 2잔(연하게 1잔) 만들기');
+    assert.equal(taskText([line('strawberry_smoothie', 1), line('mango_smoothie', 2)], menuCatalog), '딸기 스무디 1잔 · 망고 스무디 2잔 만들기');
+    assert.equal(taskText([line('latte', 1, ['decaf'])], menuCatalog), '카페 라떼 1잔(디카페인) 만들기');
   });
 });

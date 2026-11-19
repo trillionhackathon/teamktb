@@ -466,7 +466,7 @@ describe('OrderStore with aiserver', () => {
       assert.equal('error' in store.handleNote(task.id), true, 'double completion is rejected');
     });
 
-    it('SC-W shows only Zoro-matched menus and lets one menu finish independently', async () => {
+    it('SC-W puts the Zoro-matched menus that share a machine (shots) in one block, and leaves the unmatched line out', async () => {
       const store = fifoStore(async () => group(
         { '#126': 1, '#128': 1, '#129': 1 },
         { '#130': 0.1, '#128': 1, '#129': 0.9 },
@@ -475,20 +475,41 @@ describe('OrderStore with aiserver', () => {
       store.loadScenario('SC-W');
       await store.settle();
       const tasks = store.snapshot().notes.filter(({ kind }) => kind === 'task');
-      assert.deepEqual(tasks.map(({ text }) => text), ['카페 라떼 2잔 만들기', '아이스 아메리카노 1잔 만들기']);
-      assert.ok(tasks.every(({ color, parts }) => color && parts?.length), 'every manufacturing task has one color for all of its parts');
-      assert.equal(new Set(tasks.map(({ color }) => color)).size, tasks.length, 'different manufacturing tasks have different colors');
-      assert.equal(tasks[0].detail, '샷 추출 · 우유 스팀');
-      assert.equal(tasks[1].detail, '샷 추출 · 얼음 준비');
-      assert.deepEqual(tasks[0].order_ids, ['#126', '#128']);
-      assert.deepEqual(tasks[1].order_ids, ['#129']);
+      assert.deepEqual(tasks.map(({ text }) => text), ['카페 라떼 2잔 · 아이스 아메리카노 1잔 만들기'], 'latte and iced americano both pull shots, so they are one block');
+      assert.equal(tasks[0].detail, '샷 추출 한 번에');
+      assert.ok(tasks[0].color && tasks[0].parts?.every(({ name }) => name), 'one color, and each part names its menu');
+      assert.deepEqual(tasks[0].order_ids, ['#126', '#128', '#129']);
       assert.deepEqual(store.handleNote(tasks[0].id), { ok: true });
       assert.equal(find(store, '#126').items[0].made, true);
       assert.equal(find(store, '#128').items[0].made, true);
-      assert.equal(find(store, '#129').items[0].made, false);
-      assert.equal(find(store, '#129').items[1].made, false);
+      assert.equal(find(store, '#129').items[0].made, true);
+      assert.equal(find(store, '#129').items[1].made, false, 'the line Zoro did not match is not in the block');
       assert.equal(find(store, '#128').status, 'waiting');
-      assert.equal(store.snapshot().notes.find(({ id }) => id === tasks[1].id)?.done, false);
+    });
+
+    it('puts 딸기 스무디 and 망고 스무디 in one blender block', async () => {
+      const store = fifoStore(async () => group({ '#101': 1, '#102': 1 }, { '#102': 0.9 }, { '#102': ['mango_smoothie'] }));
+      store.loadScenario('empty');
+      store.createOrder({ channel: 'dine-in', source: 'kiosk', menu_items: [{ menu: 'strawberry_smoothie', qty: 1 }] });
+      store.createOrder({ channel: 'takeout', source: 'kiosk', menu_items: [{ menu: 'mango_smoothie', qty: 1 }] });
+      await store.settle();
+      const tasks = store.snapshot().notes.filter(({ kind }) => kind === 'task');
+      assert.deepEqual(tasks.map(({ text, detail }) => ({ text, detail })), [{ text: '딸기 스무디 1잔 · 망고 스무디 1잔 만들기', detail: '블렌딩 한 번에' }]);
+      assert.deepEqual(tasks[0].parts?.map(({ order_id: id, name, qty }) => `${id} ${name} ${qty}`), ['#101 딸기 스무디 1', '#102 망고 스무디 1']);
+    });
+
+    it('drops an order linked to #1 only by ice prep before asking Zoro, but still asks about orders that share nothing', async () => {
+      const requests: AiGroupRequest[] = [];
+      const store = fifoStore(async (request) => { requests.push(request); return group({}); });
+      store.loadScenario('empty');
+      store.createOrder({ channel: 'dine-in', source: 'kiosk', menu_items: [{ menu: 'iced_americano', qty: 1 }] });
+      store.createOrder({ channel: 'dine-in', source: 'kiosk', menu_items: [{ menu: 'lemon_ade', qty: 1 }] });
+      store.createOrder({ channel: 'dine-in', source: 'kiosk', menu_items: [{ menu: 'strawberry_smoothie', qty: 1 }] });
+      await store.settle();
+      assert.deepEqual(requests.at(-1)!.orders.map(({ id }) => id), ['#101', '#103'], 'lemonade shares only the ice machine with the americano');
+      assert.ok(requests.at(-1)!.orders.every(({ menus }) => menus.every(({ equipment }) => !equipment.includes('ice_dispenser'))), 'Zoro does not see the ice machine');
+      assert.equal(store.snapshot().review.excluded['#102'], '얼음 말고 같이 쓰는 기계가 없어서');
+      assert.match(store.snapshot().notes.find(({ kind }) => kind === 'head')!.reason!, /#102 레몬에이드는 얼음 말고 같이 쓰는 기계가 없어서 따로 만들어요/);
     });
 
     it('SC-W leaves only #128 latte unfinished when the first order completes first', async () => {
@@ -695,7 +716,7 @@ describe('OrderStore with aiserver', () => {
         { qty: 1, options: ['디카페인'], note_options: ['디카페인'] },
       ]);
       const [door, decaf] = card.note_read!.sentences;
-      assert.deepEqual({ field: door.field, hidden: door.hidden }, { field: 'rider', hidden: true }, 'delivery-only sentences in the rider field stay off the card');
+      assert.deepEqual({ field: door.field, dismissed: door.dismissed }, { field: 'rider', dismissed: true }, 'delivery-only sentences in the rider field are folded and struck through');
       assert.deepEqual({ moved: decaf.moved, applied: decaf.applied, cups: decaf.cups, hold: decaf.hold }, { moved: true, applied: true, cups: 1, hold: false });
       assert.equal(decaf.label, '배달 칸 메모 반영: 1잔 디카페인');
       assert.equal(decaf.check, '결제 확인 +500원', 'paid options are applied but flagged for payment');
@@ -716,11 +737,11 @@ describe('OrderStore with aiserver', () => {
         { qty: 1, options: ['빨대 빼기'] },
         { qty: 1, options: ['빨대 빼기', '연하게 (샷 1개)'] },
       ]);
-      assert.deepEqual(card.note_read!.sentences.map(({ label, check, hold }) => ({ label, check, hold })), [
-        { label: '메모 반영: 1잔 연하게 (샷 1개)', check: undefined, hold: false },
-        { label: '메모 반영: 2잔 빨대 빼기', check: undefined, hold: false },
-        { label: '메모 "노크하지 말고 문 앞에 두세요"', check: undefined, hold: false },
-      ]);
+      assert.deepEqual(card.note_read!.sentences.map(({ label, check, hold, dismissed }) => ({ label, check, hold, dismissed })), [
+        { label: '메모 반영: 1잔 연하게 (샷 1개)', check: undefined, hold: false, dismissed: false },
+        { label: '메모 반영: 2잔 빨대 빼기', check: undefined, hold: false, dismissed: false },
+        { label: '메모 "노크하지 말고 문 앞에 두세요"', check: undefined, hold: false, dismissed: true },
+      ], 'a sure delivery sentence in the store field is folded too');
     });
 
     it('holds an order with an errand or cancel condition out of grouping until staff confirm it', async () => {
@@ -772,7 +793,7 @@ describe('OrderStore with aiserver', () => {
       await store.settle();
       const card = find(store, '#102');
       assert.equal(card.note_read?.status, 'unavailable');
-      assert.ok(card.note_read!.sentences.every(({ check, hold, hidden, applied }) => check && hold && !hidden && !applied));
+      assert.ok(card.note_read!.sentences.every(({ check, hold, dismissed, applied }) => check && hold && !dismissed && !applied));
       assert.deepEqual(card.items.map(({ qty, options }) => ({ qty, options })), [{ qty: 2, options: [] }]);
       assert.equal(store.snapshot().review.excluded['#102'], '메모를 확인하기 전이라');
     });

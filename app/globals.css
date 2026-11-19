@@ -168,6 +168,10 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .card-reason strong { display: flex; align-items: center; gap: 6px; color: var(--accent-ink); font-size: 12px; font-weight: 760; }
 .next-badge { padding: 0 6px; border-radius: 5px; background: var(--accent-ink); color: #fff; font-size: 11px; }
 .card-flag.tone-ok { color: #246140; }
+/* 불필요한 메모: 카드에서는 접어 두고 누르면 삭선으로 펼친다. 카드 전체를 덮는 상세 버튼보다 위에 둔다 */
+.card-flag-toggle { position: relative; z-index: 2; justify-self: start; padding: 0; border: 0; background: none; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; }
+.card-flag-toggle:hover { text-decoration: underline; }
+.card-flag.is-dismissed s { text-decoration-thickness: 1.5px; opacity: .75; }
 
 /* 4번 칸: 누가 골랐는지(확인 중, Zoro 0.78, 룰)와 Zoro가 룰과 다르게 골랐을 때의 "룰은 #110 · 이유" */
 .quest-card.picked { border-color: #b9cde3; }
@@ -453,7 +457,9 @@ body:has(.quest-layout) { background: var(--frame); color: var(--ink); }
 }
 .board-section .quest-card.grouped .card-items, .board-section .quest-card.grouped .card-foot { border-top-color: color-mix(in srgb, var(--group, var(--hl)) 35%, transparent); }
 .board-section .quest-card.grouped .slot-number { background: var(--group, var(--hl)); }
-.group-tag { color: #fff; }
+/* 같이 만들기 표시는 카드 전체가 아니라 메뉴 줄 단위: 그 줄이 들어간 일머리 팁 제조 블록 색으로 왼쪽 띠와 옅은 배경을 칠한다. */
+.board-section .group-tag { background: #2a3a4f; color: var(--ink); }
+.card-items li.in-task { margin-left: -6px; padding: 2px 4px 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--line-color) 16%, transparent); box-shadow: inset 4px 0 0 var(--line-color); }
 .board-section .group-legend li { background: transparent; box-shadow: none; }
 .board-section .group-legend li i { box-shadow: 0 0 8px currentColor; }
 
