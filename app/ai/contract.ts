@@ -102,3 +102,66 @@ export function parseIntentResult(value: unknown): IntentResult | undefined {
   if (!isRecord(value) || typeof value.intent !== 'string' || !isFiniteNumber(value.confidence) || !isSource(value.source)) return undefined;
   return { intent: value.intent, confidence: value.confidence, source: value.source };
 }
+
+// ---- 일머리 퀘스트 보드: POST /ai/quest (aiserver feat/quest-api app/schemas.py QuestState, QuestResult) ----
+
+export type AiQuestItem = { key: string; label: string; qty: number };
+
+export type AiQuestOrder = {
+  id: string;
+  items: AiQuestItem[];
+  channel: 'store' | 'delivery';
+  created_at: string;
+  prep_seconds: number;
+  rider_status: 'none' | 'assigned' | 'arrived';
+  overtaken: number;
+  prepared_qty: number;
+};
+
+export type AiQuestState = {
+  fixed: AiQuestOrder[];
+  candidates: AiQuestOrder[];
+  store: Record<string, string>;
+  inventory: Record<string, string>;
+};
+
+export type AiCandidatePick = { order_id: string; reason_code: string; reason: string; confidence: number; source: AiSource };
+
+export type AiQuestLine =
+  | { kind: 'make'; key: string; label: string; qty: number; parts: { order_id: string; qty: number }[] }
+  | { kind: 'complete'; order_id: string; prepared_qty: number };
+
+export type QuestResult = {
+  candidates: AiCandidatePick[];
+  plan: { head: string; lines: AiQuestLine[]; source: AiSource } | null;
+  fallback: boolean;
+};
+
+function parseQuestLine(value: unknown): AiQuestLine | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === 'complete') {
+    if (typeof value.order_id !== 'string') return undefined;
+    return { kind: 'complete', order_id: value.order_id, prepared_qty: Number.isSafeInteger(value.prepared_qty) ? value.prepared_qty as number : 0 };
+  }
+  if (value.kind !== 'make' || typeof value.key !== 'string' || typeof value.label !== 'string' || !Number.isSafeInteger(value.qty)) return undefined;
+  if (!Array.isArray(value.parts) || value.parts.length === 0
+    || !value.parts.every((part) => isRecord(part) && typeof part.order_id === 'string' && Number.isSafeInteger(part.qty))) return undefined;
+  return { kind: 'make', key: value.key, label: value.label, qty: value.qty as number, parts: (value.parts as Record<string, unknown>[]).map((part) => ({ order_id: part.order_id as string, qty: part.qty as number })) };
+}
+
+export function parseQuestResult(value: unknown): QuestResult | undefined {
+  if (!isRecord(value)) return undefined;
+  const { candidates, plan, fallback = false } = value;
+  if (!Array.isArray(candidates) || !candidates.every((pick) => isRecord(pick)
+    && typeof pick.order_id === 'string' && typeof pick.reason_code === 'string' && typeof pick.reason === 'string'
+    && isFiniteNumber(pick.confidence) && isSource(pick.source))) return undefined;
+  if (typeof fallback !== 'boolean') return undefined;
+  let parsedPlan: QuestResult['plan'] = null;
+  if (plan !== null && plan !== undefined) {
+    if (!isRecord(plan) || typeof plan.head !== 'string' || !isSource(plan.source) || !Array.isArray(plan.lines)) return undefined;
+    const lines = plan.lines.map(parseQuestLine);
+    if (lines.some((line) => line === undefined)) return undefined;
+    parsedPlan = { head: plan.head, lines: lines as AiQuestLine[], source: plan.source };
+  }
+  return { candidates: candidates as AiCandidatePick[], plan: parsedPlan, fallback };
+}

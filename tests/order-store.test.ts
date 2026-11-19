@@ -123,6 +123,7 @@ describe('OrderStore with aiserver', () => {
         return data ? { ok: true, data } : { ok: false, error: 'AI 서버에 연결하지 못했어요.' };
       },
       classify: async () => ({ ok: true, data: { intent: 'store_event', confidence: 0.99, source: 'zoro' } }),
+      quest: async () => ({ ok: false, error: 'AI 서버에 연결하지 못했어요.' }),
     };
   }
 

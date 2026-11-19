@@ -1,4 +1,4 @@
-import { parseDecideResult, parseIntentResult, type AiStoreState, type DecideResult, type IntentResult } from '../ai/contract.ts';
+import { parseDecideResult, parseIntentResult, parseQuestResult, type AiQuestState, type AiStoreState, type DecideResult, type IntentResult, type QuestResult } from '../ai/contract.ts';
 
 // Next.js 서버에서 aiserver(FastAPI)를 호출한다. 브라우저는 aiserver 주소를 모른다.
 export type AiResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -6,6 +6,7 @@ export type AiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export type AiClient = {
   decide: (state: AiStoreState) => Promise<AiResult<DecideResult>>;
   classify: (text: string) => Promise<AiResult<IntentResult>>;
+  quest: (state: AiQuestState) => Promise<AiResult<QuestResult>>;
 };
 
 async function post<T>(baseUrl: string, path: string, body: unknown, timeoutMs: number, parse: (value: unknown) => T | undefined): Promise<AiResult<T>> {
@@ -39,6 +40,7 @@ export function createAiClient(baseUrl: string, timeoutMs = 1500): AiClient {
   return {
     decide: (state) => post(baseUrl, '/ai/decide', state, timeoutMs, parseDecideResult),
     classify: (text) => post(baseUrl, '/ai/operator-input', { text }, timeoutMs, parseIntentResult),
+    quest: (state) => post(baseUrl, '/ai/quest', state, timeoutMs, parseQuestResult),
   };
 }
 

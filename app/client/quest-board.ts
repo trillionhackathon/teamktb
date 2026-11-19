@@ -1,7 +1,8 @@
+import { toAiChannel, toAiRiderStatus, type AiQuestOrder, type AiQuestState } from '../ai/contract.ts';
 import type { BoardSnapshot, OrderItemView, OrderView } from '../domain/views.ts';
 
 // 일머리 퀘스트 보드(목업). 서버 보드 순서를 받아 화면에서 4칸 고정 + 4칸 후보로 다시 나누고,
-// 후보 승격과 일머리 TIP은 Zoro 판단을 흉내 낸 규칙으로 만든다. 도메인 데이터가 정해지면 Zoro 응답으로 바꾼다.
+// 후보 승격과 일머리 TIP은 aiserver POST /ai/quest 결과를 쓰고, 결과가 없거나 지금 보드와 맞지 않으면 같은 규칙을 화면에서 돌린다.
 
 export const FIXED_COUNT = 4;
 export const CANDIDATE_COUNT = 4;
@@ -19,7 +20,19 @@ export type TipLine =
 
 // head 주문의 퀘스트. 고정 4칸이 다 차면 frozen이 되어, head를 완료할 때까지 줄이 바뀌지 않는다.
 // 다만 같이 만들기로 한 주문이 먼저 완료되어 빠지면 다시 계산한다.
-export type TipPlan = { head: string; frozen: boolean; lines: TipLine[] };
+// source: zoro/rule은 aiserver 결과, local은 aiserver 없이 화면에서 계산한 결과
+export type DecisionOrigin = 'zoro' | 'rule' | 'local';
+
+export type TipPlan = { head: string; frozen: boolean; lines: TipLine[]; source?: DecisionOrigin };
+
+// aiserver /ai/quest 결과와 요청했을 때의 고정칸, 후보, 미리 만든 잔 수
+export type AiQuestHint = {
+  fixed: string[];
+  candidates: string[];
+  preparedKey: string;
+  ranking: { order_id: string; reason: string; source: 'zoro' | 'llm' | 'rule' }[];
+  plan: { head: string; lines: TipLine[]; source: 'zoro' | 'llm' | 'rule' } | null;
+};
 
 export type QuestState = {
   fixed: string[];
@@ -29,7 +42,7 @@ export type QuestState = {
   plan: TipPlan | null;
 };
 
-export type RankedCandidate = { order: OrderView; reason: string };
+export type RankedCandidate = { order: OrderView; reason: string; source: DecisionOrigin };
 
 export const emptyQuestState: QuestState = { fixed: [], prepared: {}, overtakes: {}, promoted: {}, plan: null };
 
@@ -97,7 +110,59 @@ export function rankCandidates(candidates: OrderView[], fixedOrders: OrderView[]
 
   return scored
     .sort((a, b) => Number(b.order === overdue) - Number(a.order === overdue) || b.score - a.score || receivedAt(a.order) - receivedAt(b.order))
-    .map(({ order, reason }) => ({ order, reason }));
+    .map(({ order, reason }) => ({ order, reason, source: 'local' as const }));
+}
+
+const sameIds = (left: string[], right: string[]) => left.length === right.length && left.every((id, index) => id === right[index]);
+const sameSet = (left: string[], right: string[]) => sameIds([...left].sort(), [...right].sort());
+const origin = (source: 'zoro' | 'llm' | 'rule'): DecisionOrigin => (source === 'zoro' ? 'zoro' : 'rule');
+
+export function preparedKey(prepared: Prepared, ids: string[]): string {
+  return JSON.stringify([...ids].sort().map((id) => [id, Object.entries(prepared[id] ?? {}).sort()]));
+}
+
+// 후보 묶음이 aiserver에 보낸 것과 같으면 aiserver 순위를 쓴다. 이유 문장은 고정칸까지 같을 때만 쓴다(칸 번호가 들어 있다).
+export function applyAiRanking(local: RankedCandidate[], ai: AiQuestHint | null | undefined, fixed: string[]): RankedCandidate[] {
+  const ids = local.map(({ order }) => order.order_id);
+  if (!ai || !sameSet(ai.candidates, ids) || !sameSet(ai.ranking.map(({ order_id: id }) => id), ids)) return local;
+  const byId = new Map(local.map((candidate) => [candidate.order.order_id, candidate]));
+  const sameFixed = sameIds(ai.fixed, fixed);
+  return ai.ranking.map(({ order_id: id, reason, source }) => {
+    const candidate = byId.get(id)!;
+    return sameFixed ? { order: candidate.order, reason, source: origin(source) } : candidate;
+  });
+}
+
+function planFromAi(ai: AiQuestHint | null | undefined, fixed: string[], prepared: Prepared): TipPlan | null {
+  if (!ai?.plan || fixed[0] !== ai.plan.head || !sameIds(ai.fixed, fixed) || ai.preparedKey !== preparedKey(prepared, fixed)) return null;
+  const valid = ai.plan.lines.every((line) => (line.kind === 'make' ? line.parts.every(({ order_id: id }) => fixed.includes(id)) : line.order_id === fixed[0]));
+  return valid ? { head: ai.plan.head, frozen: fixed.length >= FIXED_COUNT, lines: ai.plan.lines, source: origin(ai.plan.source) } : null;
+}
+
+function toAiQuestOrder(order: OrderView, prepared: Prepared, overtakes: Record<string, number>): AiQuestOrder {
+  return {
+    id: order.order_id,
+    items: remainingItems(order, prepared),
+    channel: toAiChannel(order.channel),
+    created_at: order.received_at,
+    prep_seconds: Math.round(order.remaining_work_seconds),
+    rider_status: toAiRiderStatus(order),
+    overtaken: overtakes[order.order_id] ?? 0,
+    prepared_qty: Object.values(prepared[order.order_id] ?? {}).reduce((sum, qty) => sum + qty, 0),
+  };
+}
+
+// aiserver /ai/quest 요청 본문. 보드에 없는 주문 번호는 빼고 보낸다.
+export function toAiQuestState(snapshot: BoardSnapshot, request: { fixed: string[]; candidates: string[]; prepared: Prepared; overtakes: Record<string, number> }): AiQuestState {
+  const byId = new Map(snapshot.board.map((order) => [order.order_id, order]));
+  const pick = (ids: string[]) => ids.flatMap((id) => (byId.has(id) ? [toAiQuestOrder(byId.get(id)!, request.prepared, request.overtakes)] : []));
+  const broken = Object.entries(snapshot.signals.store.equipment_status).filter(([, status]) => status === 'broken').map(([name]) => name);
+  return {
+    fixed: pick(request.fixed.slice(0, FIXED_COUNT)),
+    candidates: pick(request.candidates.slice(0, CANDIDATE_COUNT)),
+    store: Object.fromEntries(broken.map((name) => [equipmentLabels[name] ?? name, '고장'])),
+    inventory: { 원두: `약 ${snapshot.signals.inventory.coffee_beans_shots_left}샷`, 딸기: `${snapshot.signals.inventory.strawberry_servings_left}인분` },
+  };
 }
 
 export function candidateOrders(board: OrderView[], fixed: string[]): OrderView[] {
@@ -120,7 +185,7 @@ export function buildPlan(fixedOrders: OrderView[], prepared: Prepared): TipPlan
     (parts.length > 0 ? batched : solo).push(line);
   }
   const preparedQty = Object.values(prepared[head.order_id] ?? {}).reduce((sum, qty) => sum + qty, 0);
-  return { head: head.order_id, frozen: fixedOrders.length >= FIXED_COUNT, lines: [...batched, ...solo, { kind: 'complete', order_id: head.order_id, preparedQty }] };
+  return { head: head.order_id, frozen: fixedOrders.length >= FIXED_COUNT, source: 'local', lines: [...batched, ...solo, { kind: 'complete', order_id: head.order_id, preparedQty }] };
 }
 
 function keepActive<T>(record: Record<string, T>, active: Set<string>): Record<string, T> {
@@ -128,7 +193,7 @@ function keepActive<T>(record: Record<string, T>, active: Set<string>): Record<s
 }
 
 // 서버 보드가 바뀔 때마다 호출한다. 같은 보드로 다시 호출해도 결과가 같다.
-export function reconcile(state: QuestState, board: OrderView[]): QuestState {
+export function reconcile(state: QuestState, board: OrderView[], ai?: AiQuestHint | null): QuestState {
   const byId = new Map(board.map((order) => [order.order_id, order]));
   const active = new Set(byId.keys());
   let prepared: Prepared = structuredClone(state.prepared);
@@ -154,7 +219,7 @@ export function reconcile(state: QuestState, board: OrderView[]): QuestState {
     if (order.status === 'in_progress' && !fixed.includes(order.order_id)) fixed.push(order.order_id);
   }
   while (fixed.length < FIXED_COUNT) {
-    const ranked = rankCandidates(candidateOrders(board, fixed), fixed.map((id) => byId.get(id)!), prepared, overtakes);
+    const ranked = applyAiRanking(rankCandidates(candidateOrders(board, fixed), fixed.map((id) => byId.get(id)!), prepared, overtakes), ai, fixed);
     const top = ranked[0];
     if (!top) break;
     for (const { order } of ranked) {
@@ -170,39 +235,29 @@ export function reconcile(state: QuestState, board: OrderView[]): QuestState {
   const fixedOrders = fixed.map((id) => byId.get(id)!);
   const partnersStay = state.plan?.lines.every((line) => line.kind !== 'make' || line.parts.every(({ order_id: id }) => fixed.includes(id))) ?? false;
   const keep = state.plan && fixedOrders[0] && state.plan.head === fixedOrders[0].order_id && state.plan.frozen && partnersStay;
-  return { fixed, prepared, overtakes, promoted, plan: keep ? state.plan : buildPlan(fixedOrders, prepared) };
+  const aiPlan = planFromAi(ai, fixed, prepared);
+  // 고정된 퀘스트라도 화면 규칙으로 만든 것이면, 같은 보드에 대한 aiserver 결과가 오는 대로 바꾼다.
+  const plan = keep && !(aiPlan && (state.plan!.source ?? 'local') === 'local') ? state.plan : (aiPlan ?? buildPlan(fixedOrders, prepared));
+  return { fixed, prepared, overtakes, promoted, plan };
 }
 
-export type AgentAlert = { id: string; level: 'danger' | 'warn' | 'info'; title: string; detail: string; at?: string; sample?: boolean };
+export type AgentAlert = { id: string; level: 'danger' | 'warn' | 'info'; title: string; detail: string; at?: string };
 
 const equipmentLabels: Record<string, string> = { blender: '블렌더', espresso_machine: '에스프레소 머신', steam_wand: '스팀 완드' };
 
-// 도메인 데이터가 나오기 전까지 보여 줄 예시 알림
-const sampleAlerts: AgentAlert[] = [
-  { id: 'sample-milk', level: 'warn', title: '우유가 1팩 남았어요', detail: '라떼 5잔 정도 만들 수 있어요. 창고에서 미리 꺼내 두세요.', sample: true },
-  { id: 'sample-peak', level: 'info', title: '30분 뒤 점심 피크가 시작돼요', detail: '지난주 같은 시간에 주문이 평소의 2배였어요.', sample: true },
-];
+const storeAlertCategories = ['spill_cleanup', 'stock_shortage', 'equipment_failure', 'equipment_recovered'];
 
-// 왼쪽 에이전트 패널: 서버 스냅샷의 재고, 장비, 라이더, 대기 시간, 최근 상황을 알림으로 바꾼다.
-export function agentAlerts(snapshot: BoardSnapshot, now: number): AgentAlert[] {
+// 왼쪽 에이전트 패널은 매장 장비 상태, 재고 부족, 최근 매장 이벤트를 표시한다.
+export function agentAlerts(snapshot: Pick<BoardSnapshot, 'signals' | 'events'>): AgentAlert[] {
   const alerts: AgentAlert[] = [];
   const { inventory, store } = snapshot.signals;
   for (const [name, status] of Object.entries(store.equipment_status)) {
     if (status === 'broken') alerts.push({ id: `equipment-${name}`, level: 'danger', title: `${equipmentLabels[name] ?? name} 점검 중`, detail: '이 장비가 필요한 메뉴는 시작할 수 없어요.' });
   }
-  for (const order of snapshot.board) {
-    if (order.rider_status === 'arrived') alerts.push({ id: `rider-${order.order_id}`, level: 'danger', title: `${order.order_id} 라이더 도착`, detail: '라이더가 기다리고 있어요. 이 주문을 먼저 마무리하세요.' });
-    if (order.needs_confirmation) alerts.push({ id: `confirm-${order.order_id}`, level: 'warn', title: `${order.order_id} 픽업 시간 확인`, detail: '손님에게 픽업 시간을 확인해 주세요.' });
-  }
-  const longWaits = snapshot.board.filter((order) => order.status === 'waiting' && now - Date.parse(order.received_at) >= 10 * 60000);
-  if (longWaits.length > 0) {
-    const oldest = Math.floor(Math.max(...longWaits.map((order) => now - Date.parse(order.received_at))) / 60000);
-    alerts.push({ id: 'long-wait', level: 'warn', title: `10분 넘게 기다린 주문 ${longWaits.length}건`, detail: `${longWaits.map(({ order_id: id }) => id).join(', ')} 주문이 기다리고 있어요. 가장 오래된 주문은 ${oldest}분째예요.` });
-  }
   if (inventory.coffee_beans_shots_left <= 30) alerts.push({ id: 'beans', level: 'warn', title: `원두가 ${inventory.coffee_beans_shots_left}샷 남았어요`, detail: '원두 보충을 준비하세요.' });
   if (inventory.strawberry_servings_left <= 5) alerts.push({ id: 'strawberry', level: 'warn', title: `딸기가 ${inventory.strawberry_servings_left}인분 남았어요`, detail: '딸기 스무디 주문이 곧 막힐 수 있어요.' });
-  for (const event of snapshot.events.slice(0, 3)) {
+  for (const event of snapshot.events.filter(({ category }) => storeAlertCategories.includes(category)).slice(0, 3)) {
     alerts.push({ id: `event-${event.event_id}`, level: event.needs_confirmation ? 'warn' : 'info', title: event.summary, detail: event.raw_text, at: event.received_at });
   }
-  return [...alerts, ...sampleAlerts];
+  return alerts;
 }
