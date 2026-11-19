@@ -241,23 +241,4 @@ export function reconcile(state: QuestState, board: OrderView[], ai?: AiQuestHin
   return { fixed, prepared, overtakes, promoted, plan };
 }
 
-export type AgentAlert = { id: string; level: 'danger' | 'warn' | 'info'; title: string; detail: string; at?: string };
-
 const equipmentLabels: Record<string, string> = { blender: '블렌더', espresso_machine: '에스프레소 머신', steam_wand: '스팀 완드' };
-
-const storeAlertCategories = ['spill_cleanup', 'stock_shortage', 'equipment_failure', 'equipment_recovered'];
-
-// 왼쪽 에이전트 패널은 매장 장비 상태, 재고 부족, 최근 매장 이벤트를 표시한다.
-export function agentAlerts(snapshot: Pick<BoardSnapshot, 'signals' | 'events'>): AgentAlert[] {
-  const alerts: AgentAlert[] = [];
-  const { inventory, store } = snapshot.signals;
-  for (const [name, status] of Object.entries(store.equipment_status)) {
-    if (status === 'broken') alerts.push({ id: `equipment-${name}`, level: 'danger', title: `${equipmentLabels[name] ?? name} 점검 중`, detail: '이 장비가 필요한 메뉴는 시작할 수 없어요.' });
-  }
-  if (inventory.coffee_beans_shots_left <= 30) alerts.push({ id: 'beans', level: 'warn', title: `원두가 ${inventory.coffee_beans_shots_left}샷 남았어요`, detail: '원두 보충을 준비하세요.' });
-  if (inventory.strawberry_servings_left <= 5) alerts.push({ id: 'strawberry', level: 'warn', title: `딸기가 ${inventory.strawberry_servings_left}인분 남았어요`, detail: '딸기 스무디 주문이 곧 막힐 수 있어요.' });
-  for (const event of snapshot.events.filter(({ category }) => storeAlertCategories.includes(category)).slice(0, 3)) {
-    alerts.push({ id: `event-${event.event_id}`, level: event.needs_confirmation ? 'warn' : 'info', title: event.summary, detail: event.raw_text, at: event.received_at });
-  }
-  return alerts;
-}

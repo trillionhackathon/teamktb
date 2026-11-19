@@ -27,6 +27,7 @@ npm run dev
 주방 운영 보드 ──PATCH /api/orders/:번호, POST /api/events──▶ 주문 저장소 ──POST /ai/decide──▶ aiserver
 ```
 
+- 재고는 SQLite(`INVENTORY_DB`, 기본 `.data/inventory.sqlite`)에 있습니다. 처음 실행할 때 [data/inventory.json](./data/inventory.json)으로 채우고, 주문이 완료되면 레시피 사용량만큼 빼며 주문 출처(kiosk, delivery_app, demo)를 남깁니다. 주문 접수 때 원두와 딸기 검사는 SQLite 재고에서 보드에 남은 주문이 쓸 양을 뺀 값으로 합니다. `INVENTORY_COUNT_DEMO=0`이면 시연용 자동 주문은 재고에서 빼지 않습니다.
 - 주방 운영 보드는 서버 보드 순서를 받아 화면에서 4+4칸으로 다시 나눕니다. 후보 승격과 일머리 TIP은 Zoro 판단을 흉내 낸 목업 규칙([app/client/quest-board.ts](./app/client/quest-board.ts))이고, 고정칸과 미리 만든 잔 수는 브라우저 localStorage에 저장합니다.
 - 메뉴·가격·옵션은 [data/recipe.json](./data/recipe.json), 제조 시간·보드 규칙·신뢰도 기준은 [data/cafe_db.json](./data/cafe_db.json), 시나리오는 [data/scenarios.json](./data/scenarios.json)과 [scenarios.md](./scenarios.md)를 읽습니다. 화면 쪽 하드코딩 메뉴는 없습니다.
 - 주문 형식은 `cafe_db.json`의 `signals_schema.order`를 따릅니다(`order_id: "#101"`, `menu_items: [{menu, qty, size, options}]`, `channel: dine-in | takeout | delivery`).
@@ -73,6 +74,8 @@ npm run dev
 | DELETE | `/api/tips/:id` | 팁 해제 |
 | GET, POST | `/api/scenarios` | 시나리오 목록, `{ scenario_id }` 불러오기, `{ scenario_id, trigger }` 재생 |
 | GET | `/api/menu` | 메뉴 카탈로그와 주문 가능 여부 |
+| POST | `/api/agent` | 일머리 마법사 메시지와 재고 소모량 목록. `{ order: 주문번호[] }`(화면에 보이는 순서)로 어느 주문에서 재고가 모자라는지 계산 |
+| POST | `/api/inventory/restock` | `{ item_id }` 재고를 주문 단위만큼 채움. 마법사 대화의 "채웠어요" 버튼 |
 | POST | `/api/quest` | 대시보드 퀘스트 보드 판단. `{ fixed, candidates, prepared, overtakes }`를 aiserver `POST /ai/quest`로 중계하고 `{ status, result? }`를 돌려줌([docs/aiserver-api.md](./docs/aiserver-api.md#post-aiquest)) |
 | GET, POST | `/api/demo-feed` | 시연용 자동 주문 상태, `{ running: true \| false }`로 켜고 끄기. 5~12초마다 예시 주문을 넣고 보드에 16건이 쌓이면 잠시 멈춤. `DEMO_FEED=1`이면 서버 시작부터 켜짐 |
 

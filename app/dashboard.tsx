@@ -1,15 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { callApi, orderPath } from './client/api.ts';
 import type { QuestResponse } from './api/quest/route.ts';
 import {
-  agentAlerts, applyAiRanking, candidateOrders, emptyQuestState, itemKey, preparedKey, rankCandidates, reconcile, FIXED_COUNT, CANDIDATE_COUNT,
-  type AgentAlert, type AiQuestHint, type DecisionOrigin, type QuestState, type TipLine,
+  applyAiRanking, candidateOrders, emptyQuestState, itemKey, preparedKey, rankCandidates, reconcile, FIXED_COUNT, CANDIDATE_COUNT,
+  type AiQuestHint, type DecisionOrigin, type QuestState, type TipLine,
 } from './client/quest-board.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
 import type { BoardSnapshot, OrderView } from './domain/views.ts';
+import type { AgentResponse } from './api/agent/route.ts';
+import type { AgentMessage as AgentMessageData } from './server/agent.ts';
 import type { DemoFeedStatus } from './server/demo-feed.ts';
 import WizardAvatar from './wizard-avatar.tsx';
 
@@ -95,13 +97,60 @@ function useAiQuest(quest: QuestState, board: OrderView[], onResult: (hint: AiQu
   }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-function AgentMessage({ alert }: { alert: AgentAlert }) {
+// 재고, 보드 순서, 최근 처리량으로 만든 마법사 메시지(/api/agent). 보드나 보이는 순서가 바뀔 때, 그리고 30초마다 다시 읽는다.
+function useAgent(order: string[], version: number): { agent: AgentResponse | null; refresh: () => void } {
+  const [agent, setAgent] = useState<AgentResponse | null>(null);
+  const [tick, setTick] = useState(0);
+  const key = order.join(',');
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((value) => value + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void callApi<AgentResponse>('/api/agent', { body: { order: key ? key.split(',') : [] } }).then((result) => {
+      if (!cancelled && result.ok) setAgent(result.data);
+    });
+    return () => { cancelled = true; };
+  }, [key, version, tick]);
+  return { agent, refresh: () => setTick((value) => value + 1) };
+}
+
+// 마법사 대화 기록. 새 알림은 맨 아래에 붙고, 같은 알림(같은 id와 단계)은 새로 쌓지 않고 그 자리에서 문장만 고친다.
+// 응답에서 빠진 알림은 해결된 것으로 흐리게 남긴다. 이 브라우저 메모리에만 있다.
+type AgentLogEntry = AgentMessageData & { key: string; seen_at: string; resolved: boolean };
+const maxLogEntries = 50;
+
+function useAgentLog(agent: AgentResponse | null): { summary: AgentMessageData | undefined; log: AgentLogEntry[] } {
+  const [log, setLog] = useState<AgentLogEntry[]>([]);
+  useEffect(() => {
+    if (!agent) return;
+    setLog((previous) => {
+      const next = previous.map((entry) => ({ ...entry }));
+      const active = new Set<string>();
+      for (const message of agent.messages) {
+        if (message.id === 'summary') continue;
+        const key = `${message.id}:${message.level}`;
+        active.add(key);
+        const index = next.findLastIndex((entry) => entry.key === key && !entry.resolved);
+        if (index >= 0) next[index] = { ...next[index], ...message };
+        else next.push({ ...message, key, seen_at: new Date().toISOString(), resolved: false });
+      }
+      for (const entry of next) if (!active.has(entry.key)) entry.resolved = true;
+      return next.slice(-maxLogEntries);
+    });
+  }, [agent]);
+  return { summary: agent?.messages.find(({ id }) => id === 'summary'), log };
+}
+
+function AgentMessage({ message, onRestock, busy }: { message: AgentLogEntry; onRestock: (itemId: string) => void; busy: boolean }) {
   return (
-    <li className={`agent-message level-${alert.level}`}>
-      <p>{alert.detail}</p>
+    <li className={`agent-message level-${message.level}${message.resolved ? ' resolved' : ''}`}>
+      <p>{message.text}</p>
       <div className="agent-message-meta">
-        <strong>{alert.title}</strong>
-        {alert.at && <time dateTime={alert.at}>{formatClock(alert.at)}</time>}
+        <strong>{message.resolved ? `${message.topic} 해결됨` : message.topic}</strong>
+        <time dateTime={message.at ?? message.seen_at}>{formatClock(message.at ?? message.seen_at)}</time>
+        {message.action && !message.resolved && <button type="button" className="agent-action" disabled={busy} onClick={() => onRestock(message.action!.item_id)}>{message.action.label}</button>}
       </div>
     </li>
   );
@@ -188,7 +237,7 @@ function tipReason(line: TipLine, head: OrderView, slotOf: (id: string) => numbe
 export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const { snapshot: live, connection, clockOffset } = useBoardSnapshot(initial);
   const snapshot = live ?? initial;
-  const now = useNow(clockOffset);
+  const now = useNow(clockOffset, 5000, Date.parse(initial.server_time));
   const [ai, setAi] = useState<AiQuestHint | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus>('pending');
   const quest = useQuestBoard(snapshot.board, ai);
@@ -223,9 +272,26 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const queueCount = Math.max(0, snapshot.board.length - fixedOrders.length - candidates.length);
   const slotOf = (id: string) => quest.fixed.indexOf(id) + 1;
   const head = fixedOrders[0];
-  const alerts = agentAlerts(snapshot);
+  const { agent, refresh: refreshAgent } = useAgent([...quest.fixed, ...candidates.map(({ order }) => order.order_id)], snapshot.state_version);
+  const { summary: agentSummary, log: agentLog } = useAgentLog(agent);
+  const agentList = useRef<HTMLOListElement>(null);
+  const stickToBottom = useRef(true);
+  // 맨 아래를 보고 있을 때만 새 메시지를 따라 내려간다. 위로 올려 이전 대화를 읽는 중이면 그대로 둔다.
+  useLayoutEffect(() => {
+    const list = agentList.current;
+    if (list && stickToBottom.current) list.scrollTop = list.scrollHeight;
+  }, [agentLog]);
   const detail = selectedOrder && (byId.get(selectedOrder.order_id)
     ?? snapshot.history.find((order) => order.order_id === selectedOrder.order_id) ?? selectedOrder);
+
+  // 목업 입고. 실제 발주 대신 재고를 주문 단위만큼 채운다.
+  async function restock(itemId: string) {
+    setBusy(true);
+    const result = await callApi('/api/inventory/restock', { body: { item_id: itemId } });
+    setBusy(false);
+    if (result.ok) refreshAgent();
+    else setError(result.error);
+  }
 
   // 시작 단계 없이 바로 완료한다. 서버는 대기 중인 주문의 완료도 받는다.
   async function completeOrder(order: OrderView) {
@@ -260,15 +326,43 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             <WizardAvatar />
             <div>
               <h2 id="agent-title">일머리 마법사</h2>
-              <p>매장 상황 · 재고 관리</p>
+              <p>재고와 주문 순서를 살펴보고 알려 줘요</p>
             </div>
           </div>
-          <ul className="agent-list" aria-live="polite">
-            {alerts.map((alert) => <AgentMessage key={alert.id} alert={alert} />)}
-            {alerts.length === 0 && (
-              <li className="agent-message"><p>표시할 매장 이벤트나 재고 알림이 없어요.</p></li>
-            )}
-          </ul>
+          <p className="agent-summary" role="status">{agentSummary?.text ?? '재고와 주문을 살펴보는 중이에요.'}</p>
+          <ol
+            className="agent-list"
+            ref={agentList}
+            aria-label="마법사 대화, 새 메시지가 아래에 붙어요"
+            aria-live="polite"
+            tabIndex={0}
+            onScroll={(event) => {
+              const list = event.currentTarget;
+              stickToBottom.current = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
+            }}
+          >
+            {agentLog.map((message) => <AgentMessage key={`${message.key}@${message.seen_at}`} message={message} onRestock={restock} busy={busy} />)}
+            {agent && agentLog.length === 0 && <li className="agent-message"><p>지금은 알릴 재고나 매장 문제가 없어요.</p></li>}
+          </ol>
+          {agent && agent.inventory.length > 0 && (
+            <section className="stock-list" aria-labelledby="stock-title">
+              <h3 id="stock-title">재고 소모량 <span>급한 순서, 최근 {agent.recent_minutes}분과 오늘</span></h3>
+              <ul tabIndex={0} aria-label="재고 소모량, 급한 순서">
+                {agent.inventory.map((item) => (
+                  <li key={item.id} className={`stock-row level-${item.level} status-${item.status}`} title={item.menus.length > 0 ? `쓰는 메뉴: ${item.menus.join(', ')}` : undefined}>
+                    <span className="stock-name">{item.name_kr}</span>
+                    <span className="stock-status">{item.status_label}</span>
+                    <dl className="stock-usage">
+                      <div><dt>최근 {agent.recent_minutes}분</dt><dd>{item.used_recent}</dd></div>
+                      <div><dt>오늘</dt><dd>{item.used_today}</dd></div>
+                      {item.used_today_real !== item.used_today && <div><dt>실제 주문</dt><dd>{item.used_today_real}</dd></div>}
+                    </dl>
+                    {item.note && <span className="stock-note">{item.note}</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </aside>
 
         <div className="quest-main">
