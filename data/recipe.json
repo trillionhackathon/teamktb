@@ -331,7 +331,29 @@
         "ice": 150,
         "espresso_shot": 2
       },
-      "quality_note": null
+      "quality_note": null,
+      "step_seconds": [
+        {
+          "text": "컵에 얼음을 담고 정수 150ml를 붓는다",
+          "sec": 13,
+          "attended": true
+        },
+        {
+          "text": "원두를 갈아 탬핑하고 포터필터를 체결한다",
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "text": "에스프레소 2샷을 추출한다(자동 정지)",
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "text": "붓고 뚜껑·빨대를 체결한다",
+          "sec": 11,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "hot_americano",
@@ -381,7 +403,29 @@
       "consumes_stock": {
         "espresso_shot": 2
       },
-      "quality_note": "추출 후 60초 내 제공 권장"
+      "quality_note": "추출 후 60초 내 제공 권장",
+      "step_seconds": [
+        {
+          "text": "컵에 온수 250ml를 받는다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "원두를 갈아 탬핑하고 포터필터를 체결한다",
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "text": "에스프레소 2샷을 추출한다(자동 정지)",
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "text": "붓고 홀더를 체결한다",
+          "sec": 8,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "latte",
@@ -439,7 +483,49 @@
         "espresso_shot": 2,
         "milk": 180
       },
-      "quality_note": "스팀 완료 → 붓기 30초 이내. 초과 시 거품·액상 분리(cafe_db.json의 Q-MILK)"
+      "quality_note": "스팀 완료 → 붓기 30초 이내. 초과 시 거품·액상 분리(cafe_db.json의 Q-MILK)",
+      "step_seconds": [
+        {
+          "text": "잔을 준비한다",
+          "sec": 4,
+          "attended": true
+        },
+        {
+          "text": "원두를 갈아 탬핑하고 포터필터를 체결한다",
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "text": "에스프레소 2샷을 추출한다(자동 정지)",
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "text": "피처에 우유 180ml를 담는다",
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "text": "우유를 스티밍한다",
+          "sec": 25,
+          "attended": true
+        },
+        {
+          "text": "스팀 완드를 닦고 정리한다",
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "text": "라떼아트로 붓는다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "마감한다",
+          "sec": 8,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "iced_latte",
@@ -506,7 +592,29 @@
         "milk": 180,
         "espresso_shot": 2
       },
-      "quality_note": null
+      "quality_note": null,
+      "step_seconds": [
+        {
+          "text": "컵에 얼음을 담고 우유 180ml를 붓는다",
+          "sec": 15,
+          "attended": true
+        },
+        {
+          "text": "원두를 갈아 탬핑하고 포터필터를 체결한다",
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "text": "에스프레소 2샷을 추출한다(자동 정지)",
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "text": "붓고 뚜껑·빨대를 체결한다",
+          "sec": 10,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "cappuccino",
@@ -561,7 +669,39 @@
         "milk": 140
       },
       "quality_note": "거품 두께가 핵심. 스팀 후 즉시 제공",
-      "batch_blocker": "라떼와 거품 두께가 달라 같은 피처로 묶을 수 없다"
+      "batch_blocker": "라떼와 거품 두께가 달라 같은 피처로 묶을 수 없다",
+      "step_seconds": [
+        {
+          "text": "잔과 피처를 준비한다",
+          "sec": 6,
+          "attended": true
+        },
+        {
+          "text": "원두를 갈아 탬핑하고 포터필터를 체결한다",
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "text": "에스프레소 2샷을 추출한다(자동 정지)",
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "text": "우유를 스티밍한다(거품을 두껍게)",
+          "sec": 30,
+          "attended": true
+        },
+        {
+          "text": "붓고 거품을 올린다",
+          "sec": 15,
+          "attended": true
+        },
+        {
+          "text": "스팀 완드를 정리한다",
+          "sec": 6,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "vanilla_latte_ice",
@@ -634,7 +774,29 @@
         "milk": 170,
         "espresso_shot": 2
       },
-      "quality_note": null
+      "quality_note": null,
+      "step_seconds": [
+        {
+          "text": "컵에 시럽, 얼음, 우유를 넣는다",
+          "sec": 20,
+          "attended": true
+        },
+        {
+          "text": "원두를 갈아 탬핑하고 포터필터를 체결한다",
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "text": "에스프레소 2샷을 추출한다(자동 정지)",
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "text": "붓고 뚜껑·빨대를 체결한다",
+          "sec": 10,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "caramel_macchiato_ice",
@@ -714,7 +876,39 @@
         "espresso_shot": 2,
         "caramel_sauce": 15
       },
-      "quality_note": "층 분리가 비주얼 포인트. 젓지 않고 전달"
+      "quality_note": "층 분리가 비주얼 포인트. 젓지 않고 전달",
+      "step_seconds": [
+        {
+          "text": "컵에 시럽, 얼음, 우유를 넣는다",
+          "sec": 20,
+          "attended": true
+        },
+        {
+          "text": "원두를 갈아 탬핑하고 포터필터를 체결한다",
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "text": "에스프레소 2샷을 추출한다(자동 정지)",
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "text": "샷을 층이 지게 붓는다",
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "text": "카라멜 소스를 격자로 뿌린다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "뚜껑·빨대를 체결한다",
+          "sec": 6,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "cafe_mocha_ice",
@@ -799,7 +993,39 @@
         "espresso_shot": 2,
         "whipping_cream": 1
       },
-      "quality_note": "휘핑이 무너지므로 완성 후 즉시 제공"
+      "quality_note": "휘핑이 무너지므로 완성 후 즉시 제공",
+      "step_seconds": [
+        {
+          "text": "컵에 초콜릿 소스를 넣고 얼음, 우유를 붓는다",
+          "sec": 22,
+          "attended": true
+        },
+        {
+          "text": "원두를 갈아 탬핑하고 포터필터를 체결한다",
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "text": "에스프레소 2샷을 추출한다(자동 정지)",
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "text": "샷으로 소스를 풀며 붓는다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "휘핑크림을 올린다",
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "text": "뚜껑을 체결한다",
+          "sec": 6,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "cold_brew",
@@ -858,7 +1084,29 @@
         "cold_brew_concentrate": 120
       },
       "quality_note": null,
-      "note": "에스프레소 머신을 쓰지 않아 머신 혼잡 시 버퍼 음료로 유용"
+      "note": "에스프레소 머신을 쓰지 않아 머신 혼잡 시 버퍼 음료로 유용",
+      "step_seconds": [
+        {
+          "text": "컵에 얼음을 담는다",
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "text": "콜드브루 원액 120ml를 붓는다",
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "text": "정수 80ml로 농도를 맞춘다",
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "text": "뚜껑·빨대를 체결한다",
+          "sec": 6,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "green_tea_latte_ice",
@@ -920,7 +1168,24 @@
         "ice": 150,
         "milk": 200
       },
-      "quality_note": "파우더가 가라앉으므로 제공 직전 가볍게 저어준다"
+      "quality_note": "파우더가 가라앉으므로 제공 직전 가볍게 저어준다",
+      "step_seconds": [
+        {
+          "text": "셰이커에 파우더와 우유를 넣어 덩어리 없이 푼다",
+          "sec": 25,
+          "attended": true
+        },
+        {
+          "text": "컵에 얼음과 우유를 담는다",
+          "sec": 15,
+          "attended": true
+        },
+        {
+          "text": "푼 그린티를 붓고 저어 뚜껑을 체결한다",
+          "sec": 12,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "chocolate_latte_ice",
@@ -983,7 +1248,24 @@
         "ice": 150,
         "milk": 200
       },
-      "quality_note": null
+      "quality_note": null,
+      "step_seconds": [
+        {
+          "text": "컵에 초콜릿 소스를 넣고 우유로 푼다",
+          "sec": 15,
+          "attended": true
+        },
+        {
+          "text": "얼음과 우유를 붓는다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "뚜껑·빨대를 체결한다",
+          "sec": 6,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "strawberry_latte_ice",
@@ -1045,7 +1327,24 @@
         "ice": 140,
         "milk": 200
       },
-      "quality_note": "딸기 재고를 스무디와 공유한다. 재고 부족 시 stock_policy 판단 대상"
+      "quality_note": "딸기 재고를 스무디와 공유한다. 재고 부족 시 stock_policy 판단 대상",
+      "step_seconds": [
+        {
+          "text": "컵 바닥에 딸기 과육을 계량해 넣는다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "얼음과 우유를 붓는다",
+          "sec": 15,
+          "attended": true
+        },
+        {
+          "text": "층이 유지되게 뚜껑·빨대를 체결한다",
+          "sec": 8,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "peach_iced_tea",
@@ -1101,7 +1400,24 @@
       "consumes_stock": {
         "ice": 150
       },
-      "quality_note": null
+      "quality_note": null,
+      "step_seconds": [
+        {
+          "text": "셰이커에 파우더와 정수를 넣고 흔들어 녹인다",
+          "sec": 25,
+          "attended": true
+        },
+        {
+          "text": "컵에 얼음을 담고 붓는다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "뚜껑·빨대를 체결한다",
+          "sec": 6,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "lemon_ade",
@@ -1163,7 +1479,29 @@
       "consumes_stock": {
         "ice": 150
       },
-      "quality_note": "탄산 유지를 위해 제공 직전에 탄산수를 붓는다"
+      "quality_note": "탄산 유지를 위해 제공 직전에 탄산수를 붓는다",
+      "step_seconds": [
+        {
+          "text": "컵에 레몬 베이스와 슬라이스를 넣는다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "얼음을 담는다",
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "text": "탄산수 220ml를 붓는다",
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "text": "뚜껑·빨대를 체결한다",
+          "sec": 6,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "grapefruit_ade",
@@ -1223,7 +1561,29 @@
       "consumes_stock": {
         "ice": 150
       },
-      "quality_note": null
+      "quality_note": null,
+      "step_seconds": [
+        {
+          "text": "컵에 자몽 베이스와 슬라이스를 넣는다",
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "text": "얼음을 담는다",
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "text": "탄산수 200ml를 붓는다",
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "text": "뚜껑·빨대를 체결한다",
+          "sec": 6,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "strawberry_smoothie",
@@ -1296,7 +1656,34 @@
         "yogurt_powder": 100
       },
       "quality_note": "완성 후 90초 내 제공 권장. 300초 초과 시 상 분리(cafe_db.json의 Q-SMOOTHIE). 픽업 직전 블렌딩이 원칙",
-      "unattended_window_sec": 35
+      "unattended_window_sec": 35,
+      "step_seconds": [
+        {
+          "text": "블렌더 용기를 거치하고 재료를 계량해 넣는다",
+          "sec": 47,
+          "attended": true
+        },
+        {
+          "text": "스무디 프로그램을 돌린다(자동 정지)",
+          "sec": 35,
+          "attended": false
+        },
+        {
+          "text": "컵에 따르고 뚜껑·빨대를 체결한다",
+          "sec": 21,
+          "attended": true
+        },
+        {
+          "text": "용기를 린서로 헹군다",
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "text": "정리한다",
+          "sec": 4,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "mango_smoothie",
@@ -1369,7 +1756,29 @@
       },
       "quality_note": "딸기 스무디와 동일한 홀드 제약 적용",
       "unattended_window_sec": 35,
-      "batch_blocker": "딸기 스무디와 연속 제조 시 용기 린스 필요(과육 색·향 전이)"
+      "batch_blocker": "딸기 스무디와 연속 제조 시 용기 린스 필요(과육 색·향 전이)",
+      "step_seconds": [
+        {
+          "text": "블렌더 용기를 거치하고 재료를 계량해 넣는다",
+          "sec": 42,
+          "attended": true
+        },
+        {
+          "text": "스무디 프로그램을 돌린다(자동 정지)",
+          "sec": 35,
+          "attended": false
+        },
+        {
+          "text": "컵에 따르고 뚜껑·빨대를 체결한다",
+          "sec": 21,
+          "attended": true
+        },
+        {
+          "text": "용기를 린서로 헹군다",
+          "sec": 10,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "choco_chip_frappe",
@@ -1451,7 +1860,29 @@
         "whipping_cream": 1
       },
       "quality_note": "휘핑이 무너지므로 완성 후 즉시 제공",
-      "unattended_window_sec": 35
+      "unattended_window_sec": 35,
+      "step_seconds": [
+        {
+          "text": "재료를 계량해 블렌더에 넣는다",
+          "sec": 45,
+          "attended": true
+        },
+        {
+          "text": "프라페 프로그램을 돌린다(자동 정지)",
+          "sec": 35,
+          "attended": false
+        },
+        {
+          "text": "컵에 따르고 휘핑과 소스를 올린다",
+          "sec": 28,
+          "attended": true
+        },
+        {
+          "text": "용기를 린서로 헹군다",
+          "sec": 10,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "green_tea_frappe",
@@ -1523,7 +1954,29 @@
         "whipping_cream": 1
       },
       "quality_note": null,
-      "unattended_window_sec": 35
+      "unattended_window_sec": 35,
+      "step_seconds": [
+        {
+          "text": "재료를 계량해 블렌더에 넣는다",
+          "sec": 38,
+          "attended": true
+        },
+        {
+          "text": "프라페 프로그램을 돌린다(자동 정지)",
+          "sec": 35,
+          "attended": false
+        },
+        {
+          "text": "컵에 따르고 휘핑과 파우더를 올린다",
+          "sec": 22,
+          "attended": true
+        },
+        {
+          "text": "용기를 린서로 헹군다",
+          "sec": 10,
+          "attended": true
+        }
+      ]
     },
     {
       "id": "ice_cream_vanilla",
