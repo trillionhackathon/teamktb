@@ -9,7 +9,7 @@ import type { BoardReview, Order, OrderLine, ReviewGroup } from './types.ts';
 // 같은 메뉴끼리는 aiserver가 Zoro에 묻지 않고 바로 묶는다. Zoro는 이름이 다른 메뉴 짝만 판단한다.
 
 // 1번 묶음 색. 기준 주문(1번)과 같이 만들 주문이 같은 색이다.
-export const anchorColor = '#2e9d5b';
+export const anchorColor = '#ff2e93';
 
 // 같이 만들 수 있는 줄만 메뉴로 보낸다. 같은 메뉴가 여러 줄이면 한 번만 보낸다.
 export function groupMenus(order: Order, catalog: MenuCatalog): AiGroupMenu[] {

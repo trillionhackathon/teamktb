@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { callApi, orderPath } from './client/api.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
 import type { BoardReview, Decision, Note, QuickLane, Slot4Info } from './domain/types.ts';
@@ -22,7 +22,7 @@ function reviewHint(review: BoardReview, grouped: boolean): string {
   if (!review.anchor) return '들어온 순서대로예요';
   if (review.status === 'checking') return `들어온 순서대로예요. Zoro가 ${review.anchor} 주문과 비슷한 주문을 찾고 있어요`;
   if (review.status === 'unavailable') return '들어온 순서대로예요. Zoro가 답하지 못해서 묶지 못했어요';
-  return grouped ? `들어온 순서대로예요. 초록색은 ${review.anchor} 주문과 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
+  return grouped ? `들어온 순서대로예요. 분홍색은 ${review.anchor} 주문과 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
 }
 
 // 카드에 붙이는 Zoro 묶음 이름표. 기준 주문은 "기준", 짝은 "같이 만들기 · Zoro 0.91"(같은 메뉴면 1.00).
@@ -79,10 +79,15 @@ function useAgentLog(agent: AgentResponse | null): { summary: AgentMessageData |
   return { summary: agent?.messages.find(({ id }) => id === 'summary'), log, dismissItem };
 }
 
+// 글 속 주문 번호(#118)를 약한 회색 칸으로 감싼다. 글 내용은 바꾸지 않는다.
+function withOrderIds(text: string): ReactNode {
+  return text.split(/(#\d+)/g).map((part, index) => (/^#\d+$/.test(part) ? <span key={index} className="order-id-chip">{part}</span> : part));
+}
+
 function AgentMessage({ message, onRestock, busy }: { message: AgentLogEntry; onRestock: (itemId: string) => void; busy: boolean }) {
   return (
     <li className={`agent-message level-${message.level}${message.resolved ? ' resolved' : ''}`}>
-      <p>{message.text}</p>
+      <p>{withOrderIds(message.text)}</p>
       <div className="agent-message-meta">
         <strong>{message.resolved ? `${message.topic} 해결됨` : message.topic}</strong>
         <time dateTime={message.at ?? message.seen_at}>{formatClock(message.at ?? message.seen_at)}</time>
@@ -92,9 +97,17 @@ function AgentMessage({ message, onRestock, busy }: { message: AgentLogEntry; on
   );
 }
 
+// 긴 주문은 잘리지 않게 칸을 넓히고 안에서 열을 나눈다. 메뉴 줄 수 기준: 1~3줄은 1칸 1열, 4~6줄은 1.7칸 2열, 7줄 이상은 2.4칸 3열.
+// 주문 칸 수(4칸)와 순서는 그대로고, 한 줄 안에서 칸 너비만 나눠 가진다.
+const columnsFor = (lines: number): 1 | 2 | 3 => (lines >= 7 ? 3 : lines >= 4 ? 2 : 1);
+const weightFor = (lines: number): number => ({ 1: 1, 2: 1.7, 3: 2.4 })[columnsFor(lines)];
+function rowColumns(orders: (OrderView | undefined)[]): CSSProperties {
+  return { '--cols': orders.map((order) => `minmax(0, ${order ? weightFor(order.items.length) : 1}fr)`).join(' ') } as CSSProperties;
+}
+
 function OrderLines({ order }: { order: OrderView }) {
   return (
-    <ul className="card-items">
+    <ul className={`card-items cols-${columnsFor(order.items.length)}`}>
       {order.items.map((item, index) => (
         <li key={index}>
           <span className="item-name">{item.name}</span>
@@ -173,10 +186,10 @@ function NoteCard({ note, busy, onComplete }: { note: Note; busy: boolean; onCom
   return (
     <li className="note-card">
       <div className="note-body">
-        <p className="note-text">{note.text}</p>
-        {note.detail && <p className="note-detail">{note.detail}</p>}
-        {note.reason && <p className="note-detail">{note.reason}</p>}
-        {note.zoro && <p className="note-zoro">{note.zoro}</p>}
+        <p className="note-text">{withOrderIds(note.text)}</p>
+        {note.detail && <p className="note-detail">{withOrderIds(note.detail)}</p>}
+        {note.reason && <p className="note-detail">{withOrderIds(note.reason)}</p>}
+        {note.zoro && <p className="note-zoro">{withOrderIds(note.zoro)}</p>}
       </div>
       {onComplete && <button type="button" className="note-button" disabled={busy} onClick={onComplete}>{note.kind === 'head' ? `${orderId} 완료` : '내줬어요'}</button>}
     </li>
@@ -370,7 +383,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                       <div><dt>오늘</dt><dd>{item.used_today}</dd></div>
                       {item.used_today_real !== item.used_today && <div><dt>실제 주문</dt><dd>{item.used_today_real}</dd></div>}
                     </dl>
-                    {item.note && <span className="stock-note">{item.note}</span>}
+                    {item.note && <span className="stock-note">{withOrderIds(item.note)}</span>}
                   </li>
                 ))}
               </ul>
@@ -394,7 +407,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                 </li>
               </ul>
             )}
-            <div className="quest-row" role="list" aria-label="고정 주문 4칸">
+            <div className="quest-row" role="list" aria-label="고정 주문 4칸" style={rowColumns(Array.from({ length: FIXED_COUNT }, (_, index) => fixedOrders[index]))}>
               {Array.from({ length: FIXED_COUNT }, (_, index) => {
                 const order = fixedOrders[index];
                 const slot = index + 1;
@@ -424,7 +437,8 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             </div>
 
             <p className="row-label">대기 주문 <span>위 주문이 끝나면 들어온 순서대로 올라가요{lane.enabled ? '. 8번은 빨리 끝나는 디저트 칸이에요' : ''}</span></p>
-            <div className="quest-row" role="list" aria-label={lane.enabled ? '대기 주문 3칸과 빠른 주문 칸' : '대기 주문 4칸'}>
+            <div className="quest-row" role="list" aria-label={lane.enabled ? '대기 주문 3칸과 빠른 주문 칸' : '대기 주문 4칸'}
+              style={rowColumns([...Array.from({ length: fifoWaitingCount }, (_, index) => waitingOrders[index]), ...(lane.enabled ? [laneOrder] : [])])}>
               {Array.from({ length: fifoWaitingCount }, (_, index) => {
                 const order = waitingOrders[index];
                 const slot = FIXED_COUNT + index + 1;
