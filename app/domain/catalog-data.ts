@@ -4,7 +4,7 @@ import type { MenuCatalog, MenuDrink, MenuOption } from './menu.ts';
 import type { SizeId } from './types.ts';
 
 // data/ 원본에서 메뉴 카탈로그를 만든다. 서버와 테스트에서만 import하고, 화면에는 결과 객체를 props로 넘긴다.
-type TimedMenu = { first_cup_sec: number; additional_cup_sec: number; complexity: number };
+type TimedMenu = { first_cup_sec: number; additional_cup_sec: number; complexity: number; basis?: string };
 const timedMenus = cafeDb.menus as Record<string, TimedMenu>;
 
 // cafe_db.json에는 MVP 3종의 제조 시간만 있다. 나머지 음료는 같은 complexity_tier의 MVP 메뉴 값을 추정치로 쓴다.
@@ -29,7 +29,7 @@ function toDrink(drink: RecipeDrink): MenuDrink {
     equipment: drink.equipment_required,
     first_cup_sec: reference.first_cup_sec,
     additional_cup_sec: reference.additional_cup_sec,
-    timing_basis: measured ? 'measured' : 'tier_estimate',
+    timing_basis: measured && measured.basis !== 'estimate' ? 'measured' : 'tier_estimate',
     is_mvp: recipe.mvp_menus.ids.includes(drink.id),
     espresso_shots: consumes.espresso_shot ?? 0,
     strawberry_servings: (consumes.strawberry_pulp ?? 0) / strawberryGramsPerServing,
