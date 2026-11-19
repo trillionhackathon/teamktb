@@ -463,6 +463,18 @@ body { background: var(--frame); color: var(--ink); }
 .note-button:hover { background: #fff; }
 .note-button:disabled { background: #7d8ea3; color: #1d2a3a; }
 
+/* 제조 작업 카드: 어두운 바탕에서도 상태가 한눈에 보이게. 밝은 화면용 값(연두 글씨, 흰 바탕)은 여기서 덮는다. */
+.notice-section .task-card { border-color: var(--task-color); box-shadow: inset 4px 0 var(--task-color); }
+.notice-section .task-card.is-next { background: color-mix(in srgb, var(--task-color) 16%, var(--frame-card)); }
+.notice-section .task-next { color: var(--task-color); }
+.notice-section .task-parts { margin-top: 4px !important; color: var(--ink); }
+/* 끝난 작업은 색을 빼서 남은 작업이 먼저 보이게 */
+.notice-section .task-card.is-done { border-color: var(--frame-line); background: #334156; box-shadow: none; opacity: .62; }
+.notice-section .task-card.is-done .note-text { text-decoration: line-through; }
+.notice-section .task-done { color: #8be8b0; font-weight: 750; }
+/* 빠른 주문 카드는 위 8번 칸과 같은 노랑으로 묶어 제조 작업과 구분한다. */
+.notice-section .quick-note { border-color: var(--quick); box-shadow: inset 4px 0 var(--quick); }
+
 /* 주문 번호가 적힌 칸: 약한 회색 바탕 */
 .order-id-chip { display: inline-block; padding: 0 7px; border-radius: 7px; background: var(--pill); color: #fff; font-weight: 800; font-variant-numeric: tabular-nums; }
 

@@ -182,12 +182,12 @@ function OrderDetail({ order, slot4, now }: { order: OrderView; slot4?: Slot4Inf
 // 아래 제조 작업과 빠른 주문 카드.
 function NoteCard({ note, busy, next, onComplete }: { note: Note; busy: boolean; next?: boolean; onComplete?: () => void }) {
   return (
-    <li className={`note-card${note.kind === 'task' ? ' task-card' : ''}${note.done ? ' is-done' : ''}${next ? ' is-next' : ''}`}
+    <li className={`note-card${note.kind === 'task' ? ' task-card' : ''}${note.kind === 'quick' ? ' quick-note' : ''}${note.done ? ' is-done' : ''}${next ? ' is-next' : ''}`}
       style={note.kind === 'task' && note.color ? ({ '--task-color': note.color } as CSSProperties) : undefined}>
       <div className="note-body">
         {next && <span className="task-next">다음 작업</span>}
         <p className="note-text">{withOrderIds(note.text)}</p>
-        {note.parts && <p className="task-parts">{note.parts.map((part) => `${part.order_id} ${part.qty}${note.unit ?? '잔'}`).join(' · ')}</p>}
+        {note.parts && <p className="task-parts">{withOrderIds(note.parts.map((part) => `${part.order_id} ${part.qty}${note.unit ?? '잔'}`).join(' · '))}</p>}
         {note.detail && <p className="note-detail">{withOrderIds(note.detail)}</p>}
         {note.reason && <p className="note-detail">{withOrderIds(note.reason)}</p>}
         {note.zoro && <p className="note-zoro">{withOrderIds(note.zoro)}</p>}
@@ -475,7 +475,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
 
           <section className="notice-section" aria-labelledby="notice-title" aria-live="polite">
             <div className="section-heading">
-              <h2 id="notice-title">지금 만들 작업</h2>
+              <h2 id="notice-title">일머리 팁</h2>
               <span className="section-meta">{visibleNotes.filter((note) => note.kind === 'task' && !note.done).length}건 남음</span>
             </div>
             {taskNotes.length > 0 && (
