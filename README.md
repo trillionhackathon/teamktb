@@ -73,6 +73,7 @@ npm run dev
 | DELETE | `/api/tips/:id` | 팁 해제 |
 | GET, POST | `/api/scenarios` | 시나리오 목록, `{ scenario_id }` 불러오기, `{ scenario_id, trigger }` 재생 |
 | GET | `/api/menu` | 메뉴 카탈로그와 주문 가능 여부 |
+| POST | `/api/quest` | 대시보드 퀘스트 보드 판단. `{ fixed, candidates, prepared, overtakes }`를 aiserver `POST /ai/quest`로 중계하고 `{ status, result? }`를 돌려줌([docs/aiserver-api.md](./docs/aiserver-api.md#post-aiquest)) |
 | GET, POST | `/api/demo-feed` | 시연용 자동 주문 상태, `{ running: true \| false }`로 켜고 끄기. 5~12초마다 예시 주문을 넣고 보드에 16건이 쌓이면 잠시 멈춤. `DEMO_FEED=1`이면 서버 시작부터 켜짐 |
 
 ## 검증
