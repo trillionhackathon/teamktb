@@ -1,0 +1,14 @@
+.delivery-page { max-width: 720px; margin: 0 auto; padding: 32px 20px; }
+.delivery-form { margin-top: 22px; padding: 20px; }
+.delivery-form fieldset { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.delivery-form legend { padding: 0; margin-bottom: 14px; font-size: 18px; font-weight: 730; }
+.delivery-form label { display: grid; gap: 6px; font-size: 14px; font-weight: 680; }
+.delivery-form select, .delivery-form input, .delivery-form textarea {
+  width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-weight: 450;
+}
+.delivery-form .action-button { justify-self: start; }
+.delivery-form .action-button:focus-visible { outline-color: var(--accent-ink); }
+.delivery-form .action-button:disabled { background: var(--soft); color: var(--muted); }
+.delivery-result { margin: 14px 0 9px; color: var(--muted); }
+.delivery-result strong { color: var(--text); }

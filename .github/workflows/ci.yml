@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Type check, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+
+  aiserver-contract:
+    # 실제 aiserver를 Zoro 없이(규칙 폴백) 띄우고 tests/ai-contract.test.ts의 통합 테스트를 실행한다.
+    # aiserver가 private 저장소라 AISERVER_REPO_TOKEN(aiserver contents 읽기 권한)이 없으면 건너뛴다.
+    name: aiserver contract
+    runs-on: ubuntu-latest
+    env:
+      AISERVER_TOKEN: ${{ secrets.AISERVER_REPO_TOKEN }}
+      AISERVER_REF: ${{ vars.AISERVER_REF || 'feat/ai-skeleton' }}
+    steps:
+      - name: Skip without aiserver access
+        if: env.AISERVER_TOKEN == ''
+        run: echo "::notice::AISERVER_REPO_TOKEN secret is not set; aiserver contract test skipped."
+      - uses: actions/checkout@v4
+        if: env.AISERVER_TOKEN != ''
+      - uses: actions/checkout@v4
+        if: env.AISERVER_TOKEN != ''
+        with:
+          repository: trillionhackathon/aiserver
+          ref: ${{ env.AISERVER_REF }}
+          token: ${{ env.AISERVER_TOKEN }}
+          path: aiserver
+      - uses: astral-sh/setup-uv@v5
+        if: env.AISERVER_TOKEN != ''
+      - name: Start aiserver (rule fallback, no Zoro)
+        if: env.AISERVER_TOKEN != ''
+        working-directory: aiserver
+        env:
+          ZORO_BASE_URL: http://127.0.0.1:9
+          ZORO_TIMEOUT_S: '0.5'
+          LLM_ENABLED: 'false'
+        run: |
+          uv sync --frozen
+          nohup uv run uvicorn app.main:app --port 8000 > ../aiserver.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health && exit 0; sleep 1; done
+          cat ../aiserver.log; exit 1
+      - uses: actions/setup-node@v4
+        if: env.AISERVER_TOKEN != ''
+        with:
+          node-version: 24
+          cache: npm
+      - if: env.AISERVER_TOKEN != ''
+        run: npm ci
+      - name: Contract tests against aiserver
+        if: env.AISERVER_TOKEN != ''
+        env:
+          AISERVER_URL: http://127.0.0.1:8000
+        run: npm test
+      - name: aiserver log
+        if: failure() && env.AISERVER_TOKEN != ''
+        run: cat aiserver.log
