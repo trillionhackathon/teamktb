@@ -36,11 +36,12 @@ function useAgent(order: string[], version: number): { agent: AgentResponse | nu
 }
 
 // 마법사 대화 기록. 새 알림은 맨 아래에 붙고, 같은 알림(같은 id와 단계)은 새로 쌓지 않고 그 자리에서 문장만 고친다.
-// 응답에서 빠진 알림은 해결된 것으로 흐리게 남긴다. 이 브라우저 메모리에만 있다.
+// 응답에서 빠진 알림은 해결된 것으로 흐리게 남긴다. 일하는 사람이 "채웠어요"로 처리를 확인한 재고 알림은 지운다.
+// 이 브라우저 메모리에만 있다.
 type AgentLogEntry = AgentMessageData & { key: string; seen_at: string; resolved: boolean };
 const maxLogEntries = 50;
 
-function useAgentLog(agent: AgentResponse | null): { summary: AgentMessageData | undefined; log: AgentLogEntry[] } {
+function useAgentLog(agent: AgentResponse | null): { summary: AgentMessageData | undefined; log: AgentLogEntry[]; dismissItem: (itemId: string) => void } {
   const [log, setLog] = useState<AgentLogEntry[]>([]);
   useEffect(() => {
     if (!agent) return;
@@ -59,7 +60,9 @@ function useAgentLog(agent: AgentResponse | null): { summary: AgentMessageData |
       return next.slice(-maxLogEntries);
     });
   }, [agent]);
-  return { summary: agent?.messages.find(({ id }) => id === 'summary'), log };
+  // 같은 재고의 지난 알림(해결됨으로 남은 것 포함)도 함께 지운다.
+  const dismissItem = (itemId: string) => setLog((previous) => previous.filter((entry) => entry.action?.item_id !== itemId));
+  return { summary: agent?.messages.find(({ id }) => id === 'summary'), log, dismissItem };
 }
 
 function AgentMessage({ message, onRestock, busy }: { message: AgentLogEntry; onRestock: (itemId: string) => void; busy: boolean }) {
@@ -201,7 +204,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const { slot4 } = snapshot;
   const aiStatus = snapshot.decision.ai_status;
   const { agent, refresh: refreshAgent } = useAgent(snapshot.board.slice(0, FIXED_COUNT + WAITING_COUNT).map(({ order_id: id }) => id), snapshot.state_version);
-  const { summary: agentSummary, log: agentLog } = useAgentLog(agent);
+  const { summary: agentSummary, log: agentLog, dismissItem } = useAgentLog(agent);
   const agentList = useRef<HTMLOListElement>(null);
   const stickToBottom = useRef(true);
   // 맨 아래를 보고 있을 때만 새 메시지를 따라 내려간다. 위로 올려 이전 대화를 읽는 중이면 그대로 둔다.
@@ -212,12 +215,15 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const detail = selectedOrder && (snapshot.board.find(({ order_id: id }) => id === selectedOrder.order_id)
     ?? snapshot.history.find((order) => order.order_id === selectedOrder.order_id) ?? selectedOrder);
 
-  // 목업 입고. 실제 발주 대신 재고를 주문 단위만큼 채운다.
+  // 일하는 사람이 실제로 채운 뒤 누른다. 재고를 주문 단위만큼 늘리고, 처리된 알림은 대화에서 지운다.
   async function restock(itemId: string) {
     setBusy(true);
     const result = await callApi('/api/inventory/restock', { body: { item_id: itemId } });
     setBusy(false);
-    if (result.ok) refreshAgent();
+    if (result.ok) {
+      dismissItem(itemId);
+      refreshAgent();
+    }
     else setError(result.error);
   }
 
