@@ -8,10 +8,11 @@ import type { BoardReview, Note, Order, OrderLine, ReviewGroup } from './types.t
 // 코드가 먼저 정하는 것: 디카페인·오트밀크처럼 batch_blocking 옵션이 붙은 줄은 같이 못 만든다(Zoro에 보내지 않음).
 // 같은 메뉴끼리는 aiserver가 Zoro에 묻지 않고 바로 묶는다. Zoro는 이름이 다른 메뉴 짝만 판단한다.
 
-// 1번 묶음 색. 기준 주문(1번)과 같이 만들 주문이 같은 색이다.
+// 1번(기준) 묶음 색. 위 4칸의 카드 하이라이트와 아래 작업 카드가 같은 묶음이면 같은 색을 쓴다.
 export const anchorColor = '#ff2e93';
-// 제조 작업(묶이는 메뉴 줄) 색. 어두운 화면 위에서 튀도록 핫핑크(anchorColor)·빠른 주문 칸 노랑과 겹치지 않는 네온 톤만 쓴다.
-export const taskPalette = ['#2dd4ff', '#b14aff', '#22e67a', '#ff8a3d', '#14e0c0'] as const;
+// 묶음별 색. 1번 묶음(기준 주문이 낀 묶음)은 항상 핫핑크, 그다음 묶음부터 네온 톤을 돌아가며 쓴다.
+// 빠른 주문 칸 노랑과는 겹치지 않는 색만 고른다.
+export const taskPalette = [anchorColor, '#2dd4ff', '#b14aff', '#22e67a', '#ff8a3d'] as const;
 
 export function taskLineColors(notes: Note[]): Record<string, string> {
   return Object.fromEntries(notes.flatMap((note) => note.kind === 'task' && note.color

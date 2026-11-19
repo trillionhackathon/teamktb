@@ -6,7 +6,6 @@ import { callApi, orderPath } from './client/api.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
 import type { BoardReview, Decision, Note, QuickLane, Slot4Info } from './domain/types.ts';
 import type { BoardSnapshot, OrderView } from './domain/views.ts';
-import { taskLineColors } from './domain/review.ts';
 import type { AgentResponse } from './api/agent/route.ts';
 import type { AgentMessage as AgentMessageData } from './server/agent.ts';
 import type { DemoFeedStatus } from './server/demo-feed.ts';
@@ -23,7 +22,7 @@ function reviewHint(review: BoardReview, grouped: boolean): string {
   if (!review.anchor) return '들어온 순서대로예요';
   if (review.status === 'checking') return `들어온 순서대로예요. Zoro가 ${review.anchor} 주문과 비슷한 주문을 찾고 있어요`;
   if (review.status === 'unavailable') return '들어온 순서대로예요. Zoro가 답하지 못해서 묶지 못했어요';
-  return grouped ? `들어온 순서대로예요. 분홍색은 ${review.anchor} 주문과 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
+  return grouped ? `들어온 순서대로예요. 같은 색끼리 같이 만들면 좋은 주문이에요` : `들어온 순서대로예요. ${review.anchor} 주문과 같이 만들 주문은 없어요`;
 }
 
 // 카드에 붙이는 묶음 이름표.
@@ -106,20 +105,16 @@ function rowColumns(orders: (OrderView | undefined)[]): CSSProperties {
   return { '--cols': orders.map((order) => `minmax(0, ${order ? weightFor(order.items.length) : 1}fr)`).join(' ') } as CSSProperties;
 }
 
-function OrderLines({ order, colors = {} }: { order: OrderView; colors?: Record<string, string> }) {
+function OrderLines({ order }: { order: OrderView }) {
   return (
     <ul className={`card-items cols-${columnsFor(order.items.length)}`}>
-      {order.items.map((item, index) => {
-        const color = colors[`${order.order_id}:${index}`];
-        return (
-        <li key={index} className={`${item.made ? 'item-made' : ''}${color ? ' item-task' : ''}`.trim() || undefined}
-          style={color ? ({ '--task-color': color } as CSSProperties) : undefined}>
+      {order.items.map((item, index) => (
+        <li key={index} className={item.made ? 'item-made' : undefined}>
           <span className="item-name">{item.name}</span>
           <span className="item-qty">{item.qty}{item.unit}</span>
           {item.options.length > 0 && <span className="item-options">{item.options.join(', ')}</span>}
         </li>
-        );
-      })}
+      ))}
     </ul>
   );
 }
@@ -162,7 +157,7 @@ function Slot4Reason({ slot4, full = false }: { slot4: Slot4Info; full?: boolean
 
 const orderStatusLabels: Record<OrderView['status'], string> = { waiting: '대기 중', in_progress: '제조 중', done: '완료' };
 
-function OrderDetail({ order, slot4, now, colors }: { order: OrderView; slot4?: Slot4Info; now: number; colors?: Record<string, string> }) {
+function OrderDetail({ order, slot4, now }: { order: OrderView; slot4?: Slot4Info; now: number }) {
   return (
     <>
       <p className="order-detail-meta">
@@ -177,7 +172,7 @@ function OrderDetail({ order, slot4, now, colors }: { order: OrderView; slot4?: 
         {order.rider_eta_at && <div><dt>라이더 도착 예정</dt><dd><time dateTime={order.rider_eta_at}>{formatClock(order.rider_eta_at)}</time>{order.eta_confirmed ? ' (확인됨)' : ''}</dd></div>}
       </dl>
       <h3>주문 메뉴</h3>
-      <OrderLines order={order} colors={colors} />
+      <OrderLines order={order} />
       <OrderFlags order={order} />
       {slot4 && slot4.order_id === order.order_id && <Slot4Reason slot4={slot4} full />}
     </>
@@ -286,7 +281,8 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const aiStatus = snapshot.decision.ai_status;
   const visibleNotes = snapshot.notes.filter((note) => note.kind !== 'head');
   const taskNotes = visibleNotes.filter((note) => note.kind === 'task');
-  const taskLineColorMap = taskLineColors(taskNotes);
+  // 위 4칸 카드 색: 그 주문이 낀 작업(아래 팁 칸)과 같은 색을 쓴다. 한 주문이 작업 여러 개에 걸치면 마지막 작업 색을 쓴다(드묾).
+  const orderTaskColor = Object.fromEntries(taskNotes.flatMap((note) => note.parts?.map(({ order_id }) => [order_id, note.color!]) ?? []));
   const nextTaskId = visibleNotes.find((note) => note.kind === 'task' && !note.done)?.id;
   const { agent, refresh: refreshAgent } = useAgent(snapshot.board.slice(0, FIXED_COUNT + WAITING_COUNT).map(({ order_id: id }) => id), snapshot.state_version);
   const { summary: agentSummary, log: agentLog, dismissItem } = useAgentLog(agent);
@@ -416,22 +412,16 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             {error && <p className="board-error" role="alert">{error}</p>}
 
             <p className="row-label">지금 만들 주문 <span>{reviewHint(review, grouped)}</span></p>
-            {taskNotes.length > 0 && (
-              <ul className="group-legend" aria-label="제조 작업 색상">
-                {taskNotes.map((note) => <li key={note.id} style={{ color: note.color, borderColor: note.color }}>
-                  <i style={{ background: note.color }} aria-hidden="true" />{note.text}
-                </li>)}
-              </ul>
-            )}
             <div className="quest-row" role="list" aria-label="고정 주문 4칸" style={rowColumns(Array.from({ length: FIXED_COUNT }, (_, index) => fixedOrders[index]))}>
               {Array.from({ length: FIXED_COUNT }, (_, index) => {
                 const order = fixedOrders[index];
                 const slot = index + 1;
                 if (!order) return <div key={slot} role="listitem" className="quest-card empty"><span className="slot-number">{slot}</span><p className="card-empty">빈 칸</p></div>;
                 const group = review.groups[order.order_id];
+                const color = group && (orderTaskColor[order.order_id] ?? group.color);
                 return (
                   <article key={slot} role="listitem" className={`quest-card fixed${group ? ' grouped' : ''}${order.made ? ' is-made' : ''}`}
-                    style={group ? ({ '--group': group.color } as CSSProperties) : undefined}
+                    style={color ? ({ '--group': color } as CSSProperties) : undefined}
                     aria-label={`${slot}번 칸 ${order.order_id} 주문${group ? `, ${groupTagText(group)}` : ''}`}>
                     <div className="card-body" key={order.order_id}>
                       <button type="button" className="card-detail-trigger" aria-label={`${order.order_id} 주문 상세 보기`} aria-haspopup="dialog" onClick={() => setSelectedOrder(order)} />
@@ -441,8 +431,8 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                         <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
                         <span className="card-detail-arrow" aria-hidden="true" />
                       </div>
-                      <p className="card-wait">{formatElapsed(order.received_at, now)}{group && <span className="group-tag" style={{ background: group.color }}>{groupTagText(group)}</span>}</p>
-                      <OrderLines order={order} colors={taskLineColorMap} />
+                      <p className="card-wait">{formatElapsed(order.received_at, now)}{group && <span className="group-tag" style={{ background: color }}>{groupTagText(group)}</span>}</p>
+                      <OrderLines order={order} />
                       <OrderFlags order={order} />
                       <div className="card-foot">
                         <button type="button" className="card-button complete" disabled={busy} onClick={() => completeOrder(order)}>{index === 0 ? '완료' : '먼저 완료'}</button>
@@ -488,6 +478,13 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
               <h2 id="notice-title">지금 만들 작업</h2>
               <span className="section-meta">{visibleNotes.filter((note) => note.kind === 'task' && !note.done).length}건 남음</span>
             </div>
+            {taskNotes.length > 0 && (
+              <ul className="group-legend" aria-label="제조 작업 색상">
+                {taskNotes.map((note) => <li key={note.id} style={{ color: note.color, borderColor: note.color }}>
+                  <i style={{ background: note.color }} aria-hidden="true" />{note.text}
+                </li>)}
+              </ul>
+            )}
             {review.status === 'checking' && <p className="note-status">먼저 1번 주문을 만드세요. 함께 만들 메뉴를 확인 중이에요.</p>}
             {review.status === 'unavailable' && <p className="note-status">함께 만들 메뉴를 확인하지 못했어요. 먼저 1번 주문을 만드세요.</p>}
             {visibleNotes.length > 0 ? (
@@ -508,7 +505,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
               <h2 id="order-detail-title">{detail.order_id} 주문 상세</h2>
               <button type="button" className="secondary-button" onClick={() => detailDialog.current?.close()}>닫기</button>
             </div>
-            <OrderDetail order={detail} slot4={slot4} now={now} colors={taskLineColorMap} />
+            <OrderDetail order={detail} slot4={slot4} now={now} />
           </>
         )}
       </dialog>
