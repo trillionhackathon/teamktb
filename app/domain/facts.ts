@@ -94,17 +94,24 @@ function cautionTexts(order: Order, catalog: MenuCatalog, finish4: number): stri
   return texts;
 }
 
+// 받침에 맞춰 을/를을 붙인다. say()의 결과는 "분" 또는 "초"로 끝난다.
+function withObject(text: string): string {
+  return text.endsWith('초') ? `${text}를` : `${text}을`;
+}
+
+// 기준 문장은 "4번에 안 넣으면 어떻게 되나"로 쓴다. "기준 넘김"을 그 주문의 나쁜 점으로 읽고 피하지 않도록,
+// 기준을 넘기는 건 이 주문을 4번에 넣지 않았을 때라는 게 문장에 드러나야 한다(Zoro 실험, 2026-11-19).
 function storeStandard(waited4: number, waitedPushed: number, limit: number): string {
-  if (waited4 > limit) return `4번이어도 ${say(waited4)}에 나감 (기준 ${say(limit)} 넘김)`;
-  if (waitedPushed > limit) return `4번이면 ${say(waited4)}에 나감, 밀리면 ${say(waitedPushed)}에 나감 (기준 ${say(limit)} 넘김)`;
-  return `4번이면 ${say(waited4)}에 나감, 밀려도 ${say(waitedPushed)} (기준 ${say(limit)} 안)`;
+  const standard = withObject(`기준 ${say(limit)}`);
+  if (waited4 > limit) return `4번에 넣어도 ${say(waited4)}에 나가 ${standard} 넘김, 안 넣으면 ${say(waitedPushed)}에 나감`;
+  if (waitedPushed > limit) return `4번에 안 넣으면 ${say(waitedPushed)}에 나가 ${standard} 넘김 (4번이면 ${say(waited4)})`;
+  return `4번에 안 넣어도 ${say(waitedPushed)}에 나가 기준 ${say(limit)} 안`;
 }
 
 function deliveryStandard(late4: number, latePushed: number, ok: number): string {
-  if (latePushed <= 0) return '여유 있음';
-  const verdict = `기준 ${say(ok)} ${latePushed > ok ? '넘김' : '안'}`;
-  if (late4 > 0) return `4번이어도 ${say(late4)} 늦음, 밀리면 ${say(latePushed)} 늦음 (${verdict})`;
-  return `4번이 아니면 ${say(latePushed)} 늦음 (${verdict})`;
+  if (latePushed <= 0) return '4번에 안 넣어도 라이더보다 먼저 나옴';
+  const verdict = latePushed > ok ? `늦어 ${withObject(`기준 ${say(ok)}`)} 넘김` : `늦지만 기준 ${say(ok)} 안`;
+  return `4번에 안 넣으면 라이더보다 ${say(latePushed)} ${verdict}${late4 > 0 ? ` (4번이어도 ${say(late4)} 늦음)` : ''}`;
 }
 
 // locked: 새 1~3번(칸 순서), candidates: 4번 후보(들어온 순서).

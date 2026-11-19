@@ -233,13 +233,16 @@ describe('OrderStore with aiserver', () => {
   const storeWith = (handlers: Handlers) => new OrderStore({ catalog: menuCatalog, config, decideDelayMs: 0, ai: fakeAi(handlers) });
   const zoro = (pick: string, confidence: number): AiResult<AiPickResult> => ({ ok: true, data: { pick, source: 'zoro', confidence, scores: { [pick]: confidence }, fallback: false } });
 
-  it('puts the rule pick in slot 4 first ("checking"), then swaps in a confident Zoro pick', async () => {
+  it('leaves slot 4 empty while Zoro picks, then puts Zoro\'s pick there', async () => {
     const requests: AiPickRequest[] = [];
     const store = storeWith({ pickNext: async (request) => { requests.push(request); return zoro('#107', 0.81); } });
     await store.settle();
     store.updateOrderStatus('#101', 'complete');
-    assert.equal(boardIds(store)[3], '#105');
-    assert.equal(store.snapshot().slot4?.status, 'checking');
+    const picking = store.snapshot();
+    assert.deepEqual(picking.slot4 && { order_id: picking.slot4.order_id, status: picking.slot4.status, source: picking.slot4.source }, { order_id: '', status: 'checking', source: 'zoro' });
+    assert.deepEqual(picking.board.filter(({ zone }) => zone === 'locked').map(({ order_id: id }) => id), ['#102', '#103', '#104'], 'no rule pick in slot 4 while waiting');
+    assert.deepEqual(picking.board.filter(({ zone }) => zone === 'flexible').map(({ order_id: id, slot }) => `${slot}:${id}`), ['5:#105', '6:#106', '7:#107', '8:#108']);
+    assert.ok(!picking.work_window.some(({ orders }) => orders.includes('#105')), 'the window waits for slot 4');
 
     await store.settle();
     assert.deepEqual(boardIds(store), ['#102', '#103', '#104', '#107', '#105', '#106', '#108', '#109', '#110']);
@@ -260,7 +263,7 @@ describe('OrderStore with aiserver', () => {
     assert.ok(request.candidates.every(({ facts }) => facts.includes('기다림')));
   });
 
-  it('keeps the rule pick when Zoro is unsure, fails, or answers outside the candidates', async () => {
+  it('uses the rule pick only when Zoro gives no usable answer', async () => {
     const answers: AiResult<AiPickResult>[] = [
       { ok: true, data: { pick: '#105', source: 'rule', confidence: 0.42, scores: { '#107': 0.42, '#105': 0.3 }, fallback: false } },
       { ok: false, error: 'AI 서버가 1500ms 안에 응답하지 않았어요.' },
@@ -290,11 +293,29 @@ describe('OrderStore with aiserver', () => {
       },
     });
     store.updateOrderStatus('#101', 'complete');
+    // Zoro 답 전에 1번(#102)이 또 끝나면, 비어 있던 4번은 룰 선택(#105)으로 채워 당기고 다시 Zoro에 묻는다.
     store.updateOrderStatus('#102', 'complete');
     release();
     await store.settle();
     assert.deepEqual(boardIds(store), ['#103', '#104', '#105', '#109', '#106', '#107', '#108', '#110']);
     assert.equal(store.snapshot().slot4?.order_id, '#109');
+  });
+
+  it('keeps waiting for Zoro when a waiting order completes, and skips a pick that is no longer on the board', async () => {
+    let release: () => void = () => {};
+    const store = storeWith({
+      pickNext: async () => {
+        await new Promise<void>((resolve) => { release = resolve; });
+        return zoro('#106', 0.9);
+      },
+    });
+    store.updateOrderStatus('#101', 'complete');
+    store.updateOrderStatus('#106', 'complete');
+    assert.equal(store.snapshot().slot4?.status, 'checking', 'a waiting order finishing early does not fill slot 4');
+    release();
+    await store.settle();
+    assert.deepEqual(boardIds(store).slice(0, 4), ['#102', '#103', '#104', '#105']);
+    assert.equal(store.snapshot().slot4?.source, 'rule');
   });
 
   it('uses /ai/decide only for tips: the board order stays', async () => {

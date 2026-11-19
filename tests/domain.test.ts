@@ -73,9 +73,9 @@ describe('facts for picking slot 4 (app/domain/facts.ts)', () => {
     const f105 = facts.get('#105')!;
     assert.equal(f105.waitPushedSec, 630);
     assert.equal(f105.latePushedSec, undefined);
-    assert.equal(f105.line, '아이스 아메리카노 1잔 · 포장 · 5분 30초 기다림 · 4번이면 9분 30초에 나감, 밀리면 10분 30초에 나감 (기준 10분 넘김)'
+    assert.equal(f105.line, '아이스 아메리카노 1잔 · 포장 · 5분 30초 기다림 · 4번에 안 넣으면 10분 30초에 나가 기준 10분을 넘김 (4번이면 9분 30초)'
       + ' · 1번 #102 주문과 아이스 아메리카노 같이 만들기 가능 · 2번 #103 주문과 아이스 아메리카노 같이 만들기 가능 · 3번 #104 주문과 아이스 아메리카노 같이 만들기 가능');
-    assert.match(facts.get('#106')!.line, /4번이면 5분 40초에 나감, 밀려도 6분 40초 \(기준 10분 안\) · .* · 메모 "하나는 연하게요" · 2번 밀림$/);
+    assert.match(facts.get('#106')!.line, /4번에 안 넣어도 6분 40초에 나가 기준 10분 안 · .* · 메모 "하나는 연하게요" · 2번 밀림$/);
   });
 
   it('says how late a delivery is against the rider when it is not slot 4', () => {
@@ -85,7 +85,7 @@ describe('facts for picking slot 4 (app/domain/facts.ts)', () => {
     const f110 = facts.get('#110')!;
     assert.equal(f110.latePushedSec, 50);
     assert.equal(f110.slackSec, 10);
-    assert.equal(f110.line, '카페 라떼 1잔 · 배달 · 50초 기다림 · 라이더 4분 10초 뒤 · 4번이 아니면 50초 늦음 (기준 2분 안)');
+    assert.equal(f110.line, '카페 라떼 1잔 · 배달 · 50초 기다림 · 라이더 4분 10초 뒤 · 4번에 안 넣으면 라이더보다 50초 늦지만 기준 2분 안');
   });
 
   it('does not offer batching with orders that are already made or that use batch blocking options', () => {

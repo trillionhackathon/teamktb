@@ -47,7 +47,7 @@
     "rows": 2,
     "cols": 4,
     "locked_row": "top (slots 1-4) — 고정. 1번 완료까지 할 일을 작업창에 쓴다",
-    "reorderable_row": "bottom (slots 5-8) — 들어온 순서로 대기. 1번 완료 때 이 중 하나를 골라 4번에 넣는다(Zoro priority_order, 확신이 낮으면 룰)",
+    "reorderable_row": "bottom (slots 5-8) — 들어온 순서로 대기. 1번 완료 때 이 중 하나를 골라 4번에 넣는다(Zoro priority_order, Zoro가 답하지 못하면 룰)",
     "locked_count": 4,
     "overflow": "9번째 주문부터 화면 밖 대기열",
     "card_fields": [
@@ -686,7 +686,7 @@
     {
       "feature": "priority_order",
       "primary": "zoro",
-      "on_low_confidence_or_fail": "rule: 3번 이상 밀린 주문 → 밀리면 기준 넘게 늦는 배달 → 가장 오래 기다린 주문 (data/owner_rules.json limits)",
+      "on_low_confidence_or_fail": "rule(Zoro가 답하지 못할 때만, 확신과 상관없이 Zoro 선택을 쓴다): 3번 이상 밀린 주문 → 밀리면 기준 넘게 늦는 배달 → 가장 오래 기다린 주문 (data/owner_rules.json limits)",
       "on_rule_fail": null,
       "latency_budget_sec": 0.5
     },

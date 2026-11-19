@@ -42,7 +42,7 @@ export type Order = {
 export type OwnerLimits = { max_wait_sec: number; delivery_late_ok_sec: number; max_overtaken: number };
 export type OwnerRules = { sentences: string[]; limits: OwnerLimits };
 
-// 4번 칸을 누가 골랐는지. checking은 룰 선택을 먼저 넣고 Zoro 답을 기다리는 중이다.
+// 4번 칸을 누가 골랐는지. checking은 Zoro가 고르는 중이라 4번 칸이 비어 있고 order_id는 빈 문자열이다.
 export type Slot4Info = {
   order_id: string;
   source: 'zoro' | 'rule';

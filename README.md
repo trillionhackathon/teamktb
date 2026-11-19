@@ -29,7 +29,7 @@ npm run dev
 
 - 재고는 SQLite(`INVENTORY_DB`, 기본 `.data/inventory.sqlite`)에 있습니다. 처음 실행할 때 [data/inventory.json](./data/inventory.json)으로 채우고, 주문이 완료되면 레시피 사용량만큼 빼며 주문 출처(kiosk, delivery_app, demo)를 남깁니다. 주문 접수 때 원두와 딸기 검사는 SQLite 재고에서 보드에 남은 주문이 쓸 양을 뺀 값으로 합니다. `INVENTORY_COUNT_DEMO=0`이면 시연용 자동 주문은 재고에서 빼지 않습니다.
 - 보드 순서는 서버 주문 저장소가 정합니다. 1번(고정칸) 완료 때만 2~4번을 당기고 대기 5~8번 중 하나를 골라 4번에 넣습니다. 새 주문은 맨 뒤에 붙고, 요청사항·매장 이벤트는 카드 내용만 바꿉니다. 설계는 [docs/pick-next-implementation.md](./docs/pick-next-implementation.md)입니다.
-- 4번 고르기: 코드가 후보마다 사실 문장을 계산하고([app/domain/facts.ts](./app/domain/facts.ts)), 룰 선택을 먼저 넣은 뒤 Zoro가 [data/owner_rules.json](./data/owner_rules.json)의 사장님 기준을 보고 고릅니다. Zoro 확신이 0.7보다 낮거나 응답이 없으면 룰 선택(3번 밀린 주문 → 밀리면 기준 넘게 늦는 배달 → 가장 오래 기다린 주문)이 남습니다.
+- 4번 고르기: 코드가 후보마다 사실 문장을 계산하고([app/domain/facts.ts](./app/domain/facts.ts)), 룰 선택을 먼저 넣은 뒤 Zoro가 [data/owner_rules.json](./data/owner_rules.json)의 사장님 기준을 보고 고릅니다. Zoro가 답하면 확률과 상관없이 Zoro가 고른 주문이 4번에 들어가고, Zoro가 답하지 못할 때(aiserver 미설정·타임아웃·오류)만 룰 선택(3번 밀린 주문 → 밀리면 기준 넘게 늦는 배달 → 가장 오래 기다린 주문)이 남습니다.
 - 작업창([app/domain/work-window.ts](./app/domain/work-window.ts))은 같은 메뉴를 묶고, 디카페인·오트밀크처럼 묶을 수 없는 옵션은 따로, 스무디는 1~2번이면 갈기·3~4번이면 재료만 준비로 씁니다. 완료를 누르면 작업창에서 같이 만든 주문은 '만듦'이 되어 다음에는 포장만 남습니다.
 - 메뉴·가격·옵션은 [data/recipe.json](./data/recipe.json), 제조 시간·보드 규칙·신뢰도 기준은 [data/cafe_db.json](./data/cafe_db.json), 시나리오는 [data/scenarios.json](./data/scenarios.json)과 [scenarios.md](./scenarios.md)를 읽습니다. 화면 쪽 하드코딩 메뉴는 없습니다.
 - 주문 형식은 `cafe_db.json`의 `signals_schema.order`를 따릅니다(`order_id: "#101"`, `menu_items: [{menu, qty, size, options}]`, `channel: dine-in | takeout | delivery`).
