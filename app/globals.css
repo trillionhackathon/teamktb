@@ -463,3 +463,11 @@ body { background: var(--frame); color: var(--ink); }
 
 /* 주문 상세 창은 밝은 모양 그대로 둔다(작은 보조 창) */
 .order-detail { --surface: #fff; --text: #17181c; --muted: #565a63; --line: #e0e3e8; --soft: #f3f5f8; --accent-ink: #155794; --event-ink: #a1262f; color-scheme: light; }
+
+/* 긴 주문: 칸을 넓히고(--cols) 안에서 2~3열로 나눠 끝까지 보여 준다. 이름도 줄바꿈해서 자르지 않는다. */
+@media (min-width: 1101px) { .board-section .quest-row { grid-template-columns: var(--cols, repeat(4, minmax(0, 1fr))); } }
+.board-section .card-items { overflow: visible; }
+.board-section .card-items.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+.board-section .card-items.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 18px; }
+.board-section .item-name { overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
+.board-section .quest-card { overflow: visible; }

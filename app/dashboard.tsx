@@ -97,9 +97,17 @@ function AgentMessage({ message, onRestock, busy }: { message: AgentLogEntry; on
   );
 }
 
+// 긴 주문은 잘리지 않게 칸을 넓히고 안에서 열을 나눈다. 메뉴 줄 수 기준: 1~3줄은 1칸 1열, 4~6줄은 1.7칸 2열, 7줄 이상은 2.4칸 3열.
+// 주문 칸 수(4칸)와 순서는 그대로고, 한 줄 안에서 칸 너비만 나눠 가진다.
+const columnsFor = (lines: number): 1 | 2 | 3 => (lines >= 7 ? 3 : lines >= 4 ? 2 : 1);
+const weightFor = (lines: number): number => ({ 1: 1, 2: 1.7, 3: 2.4 })[columnsFor(lines)];
+function rowColumns(orders: (OrderView | undefined)[]): CSSProperties {
+  return { '--cols': orders.map((order) => `minmax(0, ${order ? weightFor(order.items.length) : 1}fr)`).join(' ') } as CSSProperties;
+}
+
 function OrderLines({ order }: { order: OrderView }) {
   return (
-    <ul className="card-items">
+    <ul className={`card-items cols-${columnsFor(order.items.length)}`}>
       {order.items.map((item, index) => (
         <li key={index}>
           <span className="item-name">{item.name}</span>
@@ -399,7 +407,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                 </li>
               </ul>
             )}
-            <div className="quest-row" role="list" aria-label="고정 주문 4칸">
+            <div className="quest-row" role="list" aria-label="고정 주문 4칸" style={rowColumns(Array.from({ length: FIXED_COUNT }, (_, index) => fixedOrders[index]))}>
               {Array.from({ length: FIXED_COUNT }, (_, index) => {
                 const order = fixedOrders[index];
                 const slot = index + 1;
@@ -429,7 +437,8 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
             </div>
 
             <p className="row-label">대기 주문 <span>위 주문이 끝나면 들어온 순서대로 올라가요{lane.enabled ? '. 8번은 빨리 끝나는 디저트 칸이에요' : ''}</span></p>
-            <div className="quest-row" role="list" aria-label={lane.enabled ? '대기 주문 3칸과 빠른 주문 칸' : '대기 주문 4칸'}>
+            <div className="quest-row" role="list" aria-label={lane.enabled ? '대기 주문 3칸과 빠른 주문 칸' : '대기 주문 4칸'}
+              style={rowColumns([...Array.from({ length: fifoWaitingCount }, (_, index) => waitingOrders[index]), ...(lane.enabled ? [laneOrder] : [])])}>
               {Array.from({ length: fifoWaitingCount }, (_, index) => {
                 const order = waitingOrders[index];
                 const slot = FIXED_COUNT + index + 1;
