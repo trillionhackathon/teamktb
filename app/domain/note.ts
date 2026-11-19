@@ -14,6 +14,8 @@ import type { NoteField, NoteKind, NoteSentence, Order, OrderLine } from './type
 // 판단 2(1번과 같이 만들까)는 hold와 붙인 옵션(batch_blocking)으로 order-store와 review.ts가 정한다.
 
 // body: 몸 상태 ⚠. Zoro-1 실측에서 진짜(알레르기·임신)는 0.81~0.99, "한 잔은 디카페인으로요"가 0.51이라 0.7로 둔다.
+// 가게 일이 아닌 문장은 확신이 auto 이상이거나 배달 칸에 있으면 "불필요한 메모"로 접는다(카드에서 펼치면 삭선).
+// 가게 칸에 있고 확신이 check~auto면 메모 한 줄로 그대로 보여 준다.
 export const noteThresholds = { auto: 0.9, check: 0.7, body: 0.7, partial: 0.5 };
 export const maxNoteSentences = 10;
 const UNLISTED = 'unlisted';
@@ -34,7 +36,7 @@ export function noteSentences(store: string | undefined, rider: string | undefin
   const fields: [NoteField, string | undefined][] = [['store', store], ['rider', rider]];
   const texts = fields.flatMap(([field, text]) => splitNote(text).map((part) => ({ field, text: part })));
   return texts.slice(0, maxNoteSentences).map(({ field, text }, index) => ({
-    id: `s${index + 1}`, field, text, applied: false, hidden: false, hold: true, moved: false, resolved: false,
+    id: `s${index + 1}`, field, text, applied: false, dismissed: false, hold: true, moved: false, resolved: false,
   }));
 }
 
@@ -51,7 +53,7 @@ export function noteRequest(order: Order, sentences: NoteSentence[], catalog: Me
 
 // Zoro가 답하지 못했을 때: 원문을 보여 주고 ⚠, 확인될 때까지 묶지 않는다(모르면 같이 만들지 않는 쪽이 안전하다).
 export function unreadSentences(sentences: NoteSentence[], check = 'Zoro가 메모를 읽지 못했어요. 직접 확인하세요'): NoteSentence[] {
-  return sentences.map((sentence) => ({ ...sentence, applied: false, hidden: false, hold: true, moved: false, resolved: false, check }));
+  return sentences.map((sentence) => ({ ...sentence, applied: false, dismissed: false, hold: true, moved: false, resolved: false, check }));
 }
 
 // AI 서버가 없을 때: 예전처럼 메모 원문만 보여 준다(⚠·보류 없음).
@@ -142,14 +144,14 @@ export function applyNoteAnswers(order: Order, sentences: NoteSentence[], answer
     if (!answer) return unreadSentences([sentence])[0];
     const [kind, kindP] = kindOf(answer.kind);
     const [option, optionP] = top(answer.option);
-    const base: NoteSentence = { ...sentence, kind, confidence: round(kindP), applied: false, hidden: false, hold: false, moved: false, resolved: false, check: undefined };
+    const base: NoteSentence = { ...sentence, kind, confidence: round(kindP), applied: false, dismissed: false, hold: false, moved: false, resolved: false, check: undefined };
     const notStore = kind === 'delivery' || kind === 'other';
     const moved = sentence.field === 'rider' && !notStore;
     let result: NoteSentence;
     if (kindP < noteThresholds.check) {
       result = { ...base, check: '무슨 요청인지 확실하지 않아요', hold: true };
     } else if (notStore) {
-      result = { ...base, hidden: sentence.field === 'rider' };
+      result = { ...base, dismissed: sentence.field === 'rider' || kindP >= noteThresholds.auto };
     } else if (kind === 'confirm') {
       result = { ...base, moved, check: '만들기 전에 확인하세요', hold: true };
     } else {
@@ -180,7 +182,7 @@ export function applyNoteAnswers(order: Order, sentences: NoteSentence[], answer
     if (answer.body >= noteThresholds.body) {
       const milk = lines.filter((line) => findDrink(catalog, line.menu)?.allergens?.includes('milk')).map((line) => lineName(catalog, line));
       const bodyCheck = milk.length ? `몸 상태 메모예요. ${[...new Set(milk)].join(', ')}에 우유가 들어가요` : '몸 상태 메모예요. 메뉴를 확인하세요';
-      result = { ...result, hidden: false, check: [result.check, bodyCheck].filter(Boolean).join(' · ') };
+      result = { ...result, dismissed: false, check: [result.check, bodyCheck].filter(Boolean).join(' · ') };
     }
     return result;
   });

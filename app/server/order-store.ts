@@ -8,7 +8,7 @@ import {
   lineName, lineUsesEquipment, maxOrderCups, normalizeLine, optionNames, orderPrice, orderWorkSeconds, stockNeeded, type MenuCatalog,
 } from '../domain/menu.ts';
 import {
-  apartText, blockingReason, splitApartText, buildGroupRequest, groupViews, handsSeconds, headNote, idleWindow, isQuickDessert, lineUnit, quickLaneText, taskPalette, zoroText,
+  apartText, blockingReason, iceOnlyReason, linkedOnlyByIce, mainEquipment, onlyIceWithAnchor, splitApartText, taskBlocks, taskText, buildGroupRequest, groupViews, handsSeconds, headNote, idleWindow, isQuickDessert, lineUnit, quickLaneText, taskPalette, zoroText,
 } from '../domain/review.ts';
 import { defaultScenarioId, findScenario, scenarios, type SignalPatch } from '../domain/scenarios.ts';
 import type {
@@ -787,10 +787,12 @@ export class OrderStore {
   }
 
   // 1번 기준과 2~4번 중 같이 만들 수 있는 후보(만듦·보류·디카페인 같은 옵션 막힘은 코드가 먼저 뺀다)
+  // 1번과 "얼음 준비"로만 이어지는 주문도 Zoro에 묻기 전에 뺀다(같이 만들기 기준은 재료와 기계이고 얼음은 넣지 않는다).
   private reviewCandidates(anchor: string): string[] {
+    const anchorOrder = this.state.orders.get(anchor)!;
     return this.topIds().filter((id) => {
       const order = this.state.orders.get(id)!;
-      return id === anchor || (!order.made && !this.isBlocked(order) && !noteHoldReason(order));
+      return id === anchor || (!order.made && !this.isBlocked(order) && !noteHoldReason(order) && !onlyIceWithAnchor(anchorOrder, order, this.deps.catalog));
     });
   }
 
@@ -850,7 +852,8 @@ export class OrderStore {
       if (id === anchor) continue;
       const order = this.state.orders.get(id)!;
       const blocked = this.blockedReason(order)?.replace(/으로 보류$/, '이라');   // "블렌더 고장으로 보류" → "블렌더 고장이라"
-      const why = order.made ? undefined : blocked ?? noteHoldReason(order) ?? blockingReason(order, this.deps.catalog);
+      const iceOnly = onlyIceWithAnchor(this.state.orders.get(anchor)!, order, this.deps.catalog) ? iceOnlyReason : undefined;
+      const why = order.made ? undefined : blocked ?? noteHoldReason(order) ?? blockingReason(order, this.deps.catalog) ?? iceOnly;
       if (why) excluded[id] = why;
     }
     return excluded;
@@ -889,29 +892,41 @@ export class OrderStore {
         order_ids: [headId, ...(anchor && anchor !== headId ? [anchor] : []), ...companions],
         color: anchor ? review.groups[anchor]?.color : undefined,
       });
+      // 일머리 팁 제조 블록: 기준 주문과 같이 만들 주문의 줄을 모아, 같이 만드는 메뉴끼리 한 블록으로 묶는다(예: 딸기 스무디 + 망고 스무디).
+      // 짝 주문은 Zoro가 맞다고 한 메뉴(matched_menus) 중 막는 옵션이 없고, 기준 주문과 얼음으로만 이어지지 않는 줄만 넣는다.
       const taskAnchor = anchor ?? headId;
-      const candidateIds = [taskAnchor, ...this.companionsOf(anchor)];
-      const tasks = new Map<string, Note>();
-      for (const id of candidateIds) {
+      const anchorLines = this.state.orders.get(taskAnchor)!.menu_items.filter((line) => !line.options.some((option) => catalog.options[option]?.batch_blocking));
+      const parts: { order: Order; line: OrderLine; line_index: number }[] = [];
+      for (const id of [taskAnchor, ...this.companionsOf(anchor)]) {
         const order = this.state.orders.get(id)!;
         const allowed = id === taskAnchor ? undefined : this.currentReview()?.matched_menus[id] ?? [];
         order.menu_items.forEach((line, line_index) => {
-          if (allowed && (!allowed.includes(line.menu) || line.options.some((option) => catalog.options[option]?.batch_blocking))) return;
-          const key = `${line.menu}:${line.size}:${line.options.join(',')}`;
-          const taskId = `task:${taskAnchor}:${encodeURIComponent(key)}`;
-          const task = tasks.get(key) ?? { id: taskId, kind: 'task', text: '', order_ids: [], parts: [], done: true, ready: !this.isBlocked(order), unit: lineUnit(catalog, line), color: taskPalette[tasks.size % taskPalette.length] };
-          task.order_ids.push(id);
-          task.parts!.push({ order_id: id, line_index, qty: line.qty });
-          task.done = task.done && !!(order.made || order.completed_lines?.includes(line_index));
-          task.ready = task.ready && !this.isBlocked(order);
-          const qty = task.parts!.reduce((sum, part) => sum + part.qty, 0);
-          const options = optionNames(catalog, line.options).join(', ');
-          task.text = `${lineName(catalog, line)} ${qty}${lineUnit(catalog, line)} 만들기${options ? ` (${options})` : ''}`;
-          task.detail = findDrink(catalog, line.menu)?.equipment.map((name) => taskKeywords[name] ?? equipmentLabels[name] ?? name).join(' · ');
-          tasks.set(key, task);
+          if (allowed && (!allowed.includes(line.menu) || line.options.some((option) => catalog.options[option]?.batch_blocking) || linkedOnlyByIce(anchorLines, line, catalog))) return;
+          parts.push({ order, line, line_index });
         });
       }
-      notes.push(...tasks.values());
+      taskBlocks(parts.map(({ line }) => line), catalog).forEach((block, index) => {
+        const blockParts = block.map((i) => parts[i]);
+        const lines = blockParts.map(({ line }) => line);
+        const menus = [...new Set(lines.map(({ menu }) => menu))];
+        const blocking = [...new Set(lines.flatMap((line) => line.options.filter((option) => catalog.options[option]?.batch_blocking)))].sort();
+        const key = `${menus.slice().sort().join('+')}${blocking.length ? `|${blocking.join('+')}` : ''}`;
+        // 같이 쓰는 단계(얼음 제외)를 적는다. 메뉴가 하나면 그 메뉴의 단계를 모두 적는다.
+        const keyword = (name: string) => taskKeywords[name] ?? equipmentLabels[name] ?? name;
+        const shared = [...new Set(menus.flatMap((menu) => mainEquipment(catalog, menu)))].filter((name) => menus.filter((menu) => mainEquipment(catalog, menu).includes(name)).length > 1);
+        notes.push({
+          id: `task:${taskAnchor}:${encodeURIComponent(key)}`,
+          kind: 'task',
+          text: taskText(lines, catalog),
+          detail: menus.length > 1 ? `${shared.map(keyword).join(' · ')} 한 번에` : findDrink(catalog, menus[0])?.equipment.map(keyword).join(' · '),
+          order_ids: [...new Set(blockParts.map(({ order }) => order.order_id))],
+          parts: blockParts.map(({ order, line, line_index }) => ({ order_id: order.order_id, line_index, qty: line.qty, ...(menus.length > 1 ? { name: lineName(catalog, line) } : {}) })),
+          done: blockParts.every(({ order, line_index }) => !!(order.made || order.completed_lines?.includes(line_index))),
+          ready: blockParts.every(({ order }) => !this.isBlocked(order)),
+          unit: lineUnit(catalog, lines[0]),
+          color: taskPalette[index % taskPalette.length],
+        });
+      });
     }
     const laneId = this.quickLaneId();
     if (laneId) {

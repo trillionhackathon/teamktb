@@ -93,18 +93,19 @@ describe('judgment 1: how much of the note goes on the card (Zoro confidence + s
     const result = read([line('latte', 1)], '아이가 우유 알레르기가 있어요', 'store', answer('s1', 'other', 0.9, 'none', 0.9, 0.1, 0.96));
     assert.deepEqual(result.lines, [line('latte', 1)]);
     assert.equal(result.sentences[0].check, '몸 상태 메모예요. 카페 라떼에 우유가 들어가요');
-    assert.equal(result.sentences[0].hidden, false);
+    assert.equal(result.sentences[0].dismissed, false);
   });
 
   it('adds the delivery and other probabilities because both mean "not a store job"', () => {
     const sentences = noteSentences(undefined, '문 앞에 두세요');
     const result = applyNoteAnswers(order([line('latte', 1)]), sentences, [{ id: 's1', kind: { delivery: 0.5, other: 0.3, packing: 0.2 }, option: { none: 0.9 }, partial: 0.1, body: 0.01 }], menuCatalog);
-    assert.deepEqual({ kind: result.sentences[0].kind, confidence: result.sentences[0].confidence, hidden: result.sentences[0].hidden, check: result.sentences[0].check }, { kind: 'delivery', confidence: 0.8, hidden: true, check: undefined });
+    assert.deepEqual({ kind: result.sentences[0].kind, confidence: result.sentences[0].confidence, dismissed: result.sentences[0].dismissed, check: result.sentences[0].check }, { kind: 'delivery', confidence: 0.8, dismissed: true, check: undefined });
   });
 
-  it('keeps a delivery-only sentence off the card only when it is in the rider field', () => {
-    const rider = read([line('latte', 1)], '문 앞에 두세요', 'rider', answer('s1', 'other', 0.96, 'none', 0.9));
-    const store = read([line('latte', 1)], '문 앞에 두세요', 'store', answer('s1', 'other', 0.96, 'none', 0.9));
-    assert.deepEqual([rider.sentences[0].hidden, store.sentences[0].hidden], [true, false]);
+  it('dismisses a not-store sentence when Zoro is sure (0.9+) or it sits in the rider field, and keeps a fairly sure store-field one as a memo', () => {
+    const dismissed = (text: string, field: 'store' | 'rider', p: number) => read([line('latte', 1)], text, field, answer('s1', 'delivery', p, 'none', 0.9)).sentences[0].dismissed;
+    assert.equal(dismissed('문 앞에 두세요', 'rider', 0.75), true, 'rider field + not a store job');
+    assert.equal(dismissed('문 앞에 두세요', 'store', 0.96), true, 'sure enough in the store field');
+    assert.equal(dismissed('문 앞에 두세요', 'store', 0.75), false, 'fairly sure in the store field stays a memo line');
   });
 });

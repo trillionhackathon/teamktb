@@ -20,15 +20,85 @@ export function taskLineColors(notes: Note[]): Record<string, string> {
     : []));
 }
 
-// 같이 만들 수 있는 줄만 메뉴로 보낸다. 같은 메뉴가 여러 줄이면 한 번만 보낸다.
+// 같이 만들기 기준은 재료와 만드는 기계다. "얼음 준비"(얼음 기계)는 거의 모든 아이스 음료에 들어가서 기준에서 뺀다.
+// 얼음만 같이 쓰는 메뉴(예: 아이스 아메리카노와 레몬에이드)는 같이 만들지 않는다.
+export const iceEquipment = 'ice_dispenser';
+
+export function mainEquipment(catalog: MenuCatalog, menu: string): string[] {
+  return (findDrink(catalog, menu)?.equipment ?? []).filter((name) => name !== iceEquipment);
+}
+
+// 두 줄을 같이 만들 수 있는지: 같은 메뉴이거나, 얼음 말고 같은 기계를 쓴다.
+export function sharesMainWork(a: Pick<OrderLine, 'menu'>, b: Pick<OrderLine, 'menu'>, catalog: MenuCatalog): boolean {
+  if (a.menu === b.menu) return true;
+  const theirs = new Set(mainEquipment(catalog, b.menu));
+  return mainEquipment(catalog, a.menu).some((name) => theirs.has(name));
+}
+
+const usesIce = (catalog: MenuCatalog, menu: string) => findDrink(catalog, menu)?.equipment.includes(iceEquipment) ?? false;
+
+// 이 줄이 기준 주문 줄들과 "얼음 준비"로만 이어지나: 얼음 말고 같이 쓰는 기계가 없고(같은 메뉴도 아님), 얼음은 둘 다 쓴다.
+// 아무것도 겹치지 않는 메뉴는 여기서 빼지 않고 예전처럼 Zoro가 판단한다.
+export function linkedOnlyByIce(anchorLines: Pick<OrderLine, 'menu'>[], line: Pick<OrderLine, 'menu'>, catalog: MenuCatalog): boolean {
+  if (anchorLines.some((mine) => sharesMainWork(mine, line, catalog))) return false;
+  return usesIce(catalog, line.menu) && anchorLines.some((mine) => usesIce(catalog, mine.menu));
+}
+
+// 주문 단위: 같이 만들 수 있는 줄(막는 옵션 없는 줄)이 모두 기준 주문과 얼음으로만 이어지면 Zoro에 묻기 전에 뺀다.
+export function onlyIceWithAnchor(anchor: Order, other: Order, catalog: MenuCatalog): boolean {
+  const open = (order: Order) => order.menu_items.filter((line) => !isBlockingLine(line, catalog));
+  const anchorLines = open(anchor);
+  const lines = open(other);
+  return lines.length > 0 && anchorLines.length > 0 && lines.every((line) => linkedOnlyByIce(anchorLines, line, catalog));
+}
+
+export const iceOnlyReason = '얼음 말고 같이 쓰는 기계가 없어서';
+
+// 같이 만들 수 있는 줄만 메뉴로 보낸다. 같은 메뉴가 여러 줄이면 한 번만 보낸다. 얼음 기계는 Zoro에 보내지 않는다(얼음으로 비슷하다고 보지 않게).
 export function groupMenus(order: Order, catalog: MenuCatalog): AiGroupMenu[] {
   const menus = new Map<string, AiGroupMenu>();
   for (const line of order.menu_items) {
     if (line.options.some((id) => catalog.options[id]?.batch_blocking)) continue;
     const drink = findDrink(catalog, line.menu);
-    if (drink && !menus.has(drink.id)) menus.set(drink.id, { id: drink.id, name: drink.name_kr, equipment: drink.equipment, steps: drink.steps ?? [] });
+    if (drink && !menus.has(drink.id)) menus.set(drink.id, { id: drink.id, name: drink.name_kr, equipment: mainEquipment(catalog, drink.id), steps: drink.steps ?? [] });
   }
   return [...menus.values()];
+}
+
+// ---- 일머리 팁 제조 블록: 같이 만드는 메뉴끼리 한 블록 ----
+
+// 같이 만들 줄을 블록으로 나눈다. 같은 메뉴이거나 얼음 말고 같은 기계를 쓰면 한 블록이다(이어진 줄끼리 모두 한 블록).
+// 디카페인·오트처럼 막는 옵션이 붙은 줄은 같은 막는 옵션끼리만 같은 블록이 된다. 반환값은 줄 번호 묶음(처음 나온 순서).
+export function taskBlocks(lines: OrderLine[], catalog: MenuCatalog): number[][] {
+  const parent = lines.map((_, index) => index);
+  const root = (index: number): number => (parent[index] === index ? index : (parent[index] = root(parent[index])));
+  const blocking = (line: OrderLine) => line.options.filter((id) => catalog.options[id]?.batch_blocking).sort().join('+');
+  lines.forEach((a, i) => lines.forEach((b, j) => {
+    if (j <= i || blocking(a) !== blocking(b) || !sharesMainWork(a, b, catalog)) return;
+    parent[root(j)] = root(i);
+  }));
+  const blocks = new Map<number, number[]>();
+  lines.forEach((_, index) => blocks.set(root(index), [...(blocks.get(root(index)) ?? []), index]));
+  return [...blocks.values()];
+}
+
+// 블록 문장. 메뉴마다 잔 수를 더하고, 만드는 법을 바꾸는 옵션만 괄호로 붙인다(빨대 같은 포장 옵션은 주문 카드에 있다).
+// 예: "딸기 스무디 1잔 · 망고 스무디 1잔 만들기", "아이스 아메리카노 2잔(연하게 1잔) 만들기"
+export function taskText(lines: OrderLine[], catalog: MenuCatalog): string {
+  const entries = new Map<string, { name: string; unit: string; qty: number; variants: Map<string, number> }>();
+  for (const line of lines) {
+    const key = `${line.menu}:${line.size}`;
+    const entry = entries.get(key) ?? { name: lineName(catalog, line), unit: lineUnit(catalog, line), qty: 0, variants: new Map<string, number>() };
+    entry.qty += line.qty;
+    const making = line.options.filter((id) => catalog.options[id] && catalog.options[id].label !== 'packaging_only').map((id) => catalog.options[id].name_kr.replace(/\s*\(.*\)$/, ''));
+    if (making.length) entry.variants.set(making.join(', '), (entry.variants.get(making.join(', ')) ?? 0) + line.qty);
+    entries.set(key, entry);
+  }
+  const text = [...entries.values()].map(({ name, unit, qty, variants }) => {
+    const options = [...variants].map(([option, count]) => (count === qty ? option : `${option} ${count}${unit}`)).join(', ');
+    return `${name} ${qty}${unit}${options ? `(${options})` : ''}`;
+  });
+  return `${text.join(' · ')} 만들기`;
 }
 
 // batch_blocking 옵션이 붙어 같이 못 만드는 이유. 문장 가운데에 넣는 말이다(예: "#104 카페 라떼는 디카페인이라 원두를 바꿔야 해서 따로 만들어요").
@@ -133,7 +203,6 @@ const sharedWorkReasons: [string, string][] = [
   ['blender', '둘 다 블렌더를 써서 이어서 갈면 헹구는 횟수가 줄어요.'],
   ['ice_cream_freezer', '둘 다 아이스크림이라 냉동고를 한 번만 열면 돼요.'],
   ['hot_water', '둘 다 뜨거운 물을 받아서 이어서 만들면 돼요.'],
-  ['ice_dispenser', '둘 다 얼음을 담아서 컵을 나란히 놓고 한 번에 담으면 돼요.'],
 ];
 
 export function togetherReason(anchor: Order, other: Order, catalog: MenuCatalog): string {
