@@ -1524,6 +1524,1026 @@
       },
       "quality_note": null,
       "unattended_window_sec": 35
+    },
+    {
+      "id": "ice_cream_vanilla",
+      "name_kr": "바닐라 아이스크림",
+      "name_en": "Vanilla Ice Cream",
+      "category": "dessert",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "ICE",
+      "price_krw": 3500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_cream_freezer"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [],
+      "ingredients": [
+        {
+          "item": "바닐라 아이스크림 1스쿱 (80g)",
+          "amount": ""
+        },
+        {
+          "item": "컵",
+          "amount": ""
+        },
+        {
+          "item": "스푼",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 아이스크림 1스쿱을 퍼 담는다",
+        "스푼을 꽂아 트레이에 올린다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {},
+      "quality_note": null
+    },
+    {
+      "id": "ice_cream_choco",
+      "name_kr": "초코 아이스크림",
+      "name_en": "Chocolate Ice Cream",
+      "category": "dessert",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "ICE",
+      "price_krw": 3500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_cream_freezer"
+      ],
+      "allergens": [
+        "milk",
+        "soy"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [],
+      "ingredients": [
+        {
+          "item": "초코 아이스크림 1스쿱 (80g)",
+          "amount": ""
+        },
+        {
+          "item": "컵",
+          "amount": ""
+        },
+        {
+          "item": "스푼",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 아이스크림 1스쿱을 퍼 담는다",
+        "스푼을 꽂아 트레이에 올린다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {},
+      "quality_note": null
+    },
+    {
+      "id": "chamomile_hot",
+      "name_kr": "캐모마일 티(핫)",
+      "name_en": "Chamomile Tea (Hot)",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "HOT",
+      "price_krw": 4500,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "hot_water"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "캐모마일 티백 1개",
+          "amount": ""
+        },
+        {
+          "item": "온수 250ml",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 티백을 넣는다",
+        "온수 250ml를 붓는다",
+        "캐모마일 티백을 우린다(타이머, 손님이 마시기 좋게 2분)",
+        "홀더를 끼워 트레이에 올린다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 120,
+          "attended": false
+        },
+        {
+          "sec": 5,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {},
+      "quality_note": null
+    },
+    {
+      "id": "earl_grey_hot",
+      "name_kr": "얼그레이 티(핫)",
+      "name_en": "Earl Grey Tea (Hot)",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "HOT",
+      "price_krw": 4500,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "hot_water"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "얼그레이 티백 1개",
+          "amount": ""
+        },
+        {
+          "item": "온수 250ml",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 티백을 넣는다",
+        "온수 250ml를 붓는다",
+        "얼그레이 티백을 우린다(타이머, 손님이 마시기 좋게 2분)",
+        "홀더를 끼워 트레이에 올린다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 120,
+          "attended": false
+        },
+        {
+          "sec": 5,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {},
+      "quality_note": null
+    },
+    {
+      "id": "peppermint_hot",
+      "name_kr": "페퍼민트 티(핫)",
+      "name_en": "Peppermint Tea (Hot)",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "HOT",
+      "price_krw": 4500,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "hot_water"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "페퍼민트 티백 1개",
+          "amount": ""
+        },
+        {
+          "item": "온수 250ml",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 티백을 넣는다",
+        "온수 250ml를 붓는다",
+        "페퍼민트 티백을 우린다(타이머, 손님이 마시기 좋게 2분)",
+        "홀더를 끼워 트레이에 올린다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 120,
+          "attended": false
+        },
+        {
+          "sec": 5,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {},
+      "quality_note": null
+    },
+    {
+      "id": "yuja_tea_hot",
+      "name_kr": "유자차(핫)",
+      "name_en": "Yuja Tea (Hot)",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "HOT",
+      "price_krw": 5000,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "hot_water"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "유자청 2스푼 (40g)",
+          "amount": ""
+        },
+        {
+          "item": "온수 250ml",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 유자청 2스푼을 넣는다",
+        "온수 250ml를 붓는다",
+        "저어서 홀더를 끼워 내준다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {},
+      "quality_note": null
+    },
+    {
+      "id": "orange_juice",
+      "name_kr": "오렌지 주스",
+      "name_en": "Orange Juice",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_dispenser",
+        "juice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "ice_less",
+        "ice_extra",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "오렌지 주스 250ml",
+          "amount": ""
+        },
+        {
+          "item": "얼음 120g",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 얼음을 담는다",
+        "주스 디스펜서로 250ml를 받는다",
+        "뚜껑과 빨대를 끼워 내준다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 5,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "ice": 120
+      },
+      "quality_note": null
+    },
+    {
+      "id": "espresso",
+      "name_kr": "에스프레소",
+      "name_en": "Espresso",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "HOT",
+      "price_krw": 3500,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "espresso_machine"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "decaf"
+      ],
+      "ingredients": [
+        {
+          "item": "에스프레소 2샷 (원두 18g)",
+          "amount": ""
+        },
+        {
+          "item": "데미타스 컵",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "데미타스 컵을 준비한다",
+        "원두를 갈아 탬핑하고 포터필터를 체결한다",
+        "2샷을 추출한다(자동 정지)",
+        "트레이에 올려 내준다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 5,
+          "attended": true
+        },
+        {
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "sec": 5,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "espresso_shot": 2
+      },
+      "quality_note": null
+    },
+    {
+      "id": "affogato",
+      "name_kr": "아포가토",
+      "name_en": "Affogato",
+      "category": "dessert",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5500,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "espresso_machine",
+        "ice_cream_freezer"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add"
+      ],
+      "ingredients": [
+        {
+          "item": "바닐라 아이스크림 1스쿱",
+          "amount": ""
+        },
+        {
+          "item": "에스프레소 1샷",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 아이스크림 1스쿱을 담는다",
+        "원두를 갈아 탬핑하고 포터필터를 체결한다",
+        "1샷을 추출한다(자동 정지)",
+        "샷을 아이스크림에 붓고 내준다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "sec": 8,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "espresso_shot": 1
+      },
+      "quality_note": null
+    },
+    {
+      "id": "hot_chocolate",
+      "name_kr": "핫초코",
+      "name_en": "Hot Chocolate",
+      "category": "non_coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "HOT",
+      "price_krw": 5500,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "steam_wand"
+      ],
+      "allergens": [
+        "milk",
+        "soy"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "whipped_add",
+        "whipped_none",
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "우유 200ml",
+          "amount": ""
+        },
+        {
+          "item": "초콜릿 소스 40ml",
+          "amount": ""
+        },
+        {
+          "item": "휘핑크림 1회분",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "피처에 우유와 초콜릿 소스를 담는다",
+        "스팀 완드로 데우고 섞는다",
+        "컵에 붓고 젓는다",
+        "휘핑크림을 올리고 홀더를 끼운다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 28,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "milk": 200,
+        "choco_sauce": 40,
+        "whipping_cream": 1
+      },
+      "quality_note": null
+    },
+    {
+      "id": "flat_white",
+      "name_kr": "플랫 화이트",
+      "name_en": "Flat White",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "HOT",
+      "price_krw": 5000,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "espresso_machine",
+        "steam_wand"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "decaf",
+        "milk_oat",
+        "milk_low_fat",
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "에스프레소 2샷",
+          "amount": ""
+        },
+        {
+          "item": "스팀 우유 150ml",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵을 준비한다",
+        "원두를 갈아 탬핑하고 포터필터를 체결한다",
+        "2샷을 추출한다(자동 정지)",
+        "우유를 스티밍한다",
+        "붓고 마무리한다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 4,
+          "attended": true
+        },
+        {
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "sec": 25,
+          "attended": true
+        },
+        {
+          "sec": 12,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "espresso_shot": 2,
+        "milk": 150
+      },
+      "quality_note": null
+    },
+    {
+      "id": "einspanner",
+      "name_kr": "아인슈페너",
+      "name_en": "Einspanner",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 6000,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "espresso_machine",
+        "ice_dispenser"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "ice_less",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "에스프레소 2샷",
+          "amount": ""
+        },
+        {
+          "item": "얼음 150g",
+          "amount": ""
+        },
+        {
+          "item": "정수 120ml",
+          "amount": ""
+        },
+        {
+          "item": "수제 크림 60g",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 얼음과 정수를 담는다",
+        "원두를 갈아 탬핑하고 포터필터를 체결한다",
+        "2샷을 추출해 붓는다(자동 정지)",
+        "크림을 위에 올린다",
+        "뚜껑 없이 트레이에 올려 내준다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "sec": 17,
+          "attended": true
+        },
+        {
+          "sec": 30,
+          "attended": false
+        },
+        {
+          "sec": 20,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "espresso_shot": 2,
+        "ice": 150
+      },
+      "quality_note": null
+    },
+    {
+      "id": "blueberry_smoothie",
+      "name_kr": "블루베리 스무디",
+      "name_en": "Blueberry Smoothie",
+      "category": "blended",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "BLENDED",
+      "price_krw": 6500,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "blender"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "syrup_less",
+        "whipped_add",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "냉동 블루베리 180g",
+          "amount": ""
+        },
+        {
+          "item": "우유 160ml",
+          "amount": ""
+        },
+        {
+          "item": "요거트 파우더 100g",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "블렌더 용기에 재료를 계량해 넣는다",
+        "스무디 프로그램을 돌린다(자동 정지)",
+        "컵에 따르고 뚜껑·빨대를 끼운다",
+        "용기를 린서로 헹군다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 40,
+          "attended": true
+        },
+        {
+          "sec": 35,
+          "attended": false
+        },
+        {
+          "sec": 20,
+          "attended": true
+        },
+        {
+          "sec": 10,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "milk": 160,
+        "yogurt_powder": 100
+      },
+      "quality_note": null
+    },
+    {
+      "id": "iced_earl_grey",
+      "name_kr": "아이스 얼그레이 티",
+      "name_en": "Iced Earl Grey Tea",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 4800,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "hot_water",
+        "ice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "ice_less",
+        "ice_extra",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "얼그레이 티백 1개",
+          "amount": ""
+        },
+        {
+          "item": "온수 120ml",
+          "amount": ""
+        },
+        {
+          "item": "얼음 150g",
+          "amount": ""
+        },
+        {
+          "item": "찬물 100ml",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 티백을 넣는다",
+        "온수 120ml를 붓는다",
+        "얼그레이 티백을 진하게 우린다(타이머)",
+        "얼음과 찬물을 넣고 티백을 뺀다",
+        "뚜껑과 빨대를 끼워 내준다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "sec": 120,
+          "attended": false
+        },
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 5,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "ice": 150
+      },
+      "quality_note": null
+    },
+    {
+      "id": "iced_chamomile",
+      "name_kr": "아이스 캐모마일 티",
+      "name_en": "Iced Chamomile Tea",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 4800,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "hot_water",
+        "ice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "ice_less",
+        "ice_extra",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "캐모마일 티백 1개",
+          "amount": ""
+        },
+        {
+          "item": "온수 120ml",
+          "amount": ""
+        },
+        {
+          "item": "얼음 150g",
+          "amount": ""
+        },
+        {
+          "item": "찬물 100ml",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 티백을 넣는다",
+        "온수 120ml를 붓는다",
+        "캐모마일 티백을 진하게 우린다(타이머)",
+        "얼음과 찬물을 넣고 티백을 뺀다",
+        "뚜껑과 빨대를 끼워 내준다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 10,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "sec": 120,
+          "attended": false
+        },
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 5,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "ice": 150
+      },
+      "quality_note": null
+    },
+    {
+      "id": "iced_yuja_tea",
+      "name_kr": "아이스 유자차",
+      "name_en": "Iced Yuja Tea",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5200,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "ice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "ice_less",
+        "ice_extra",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "유자청 2스푼 (40g)",
+          "amount": ""
+        },
+        {
+          "item": "얼음 150g",
+          "amount": ""
+        },
+        {
+          "item": "찬물 200ml",
+          "amount": ""
+        }
+      ],
+      "steps": [
+        "컵에 유자청 2스푼을 넣는다",
+        "얼음을 담는다",
+        "찬물 200ml를 붓는다",
+        "저어서 뚜껑과 빨대를 끼워 내준다"
+      ],
+      "step_seconds": [
+        {
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        },
+        {
+          "sec": 12,
+          "attended": true
+        },
+        {
+          "sec": 8,
+          "attended": true
+        }
+      ],
+      "consumes_stock": {
+        "ice": 150
+      },
+      "quality_note": null
     }
   ],
   "food": [

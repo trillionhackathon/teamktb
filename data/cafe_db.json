@@ -220,6 +220,236 @@
         "additional_cup_basis": "바리스타 손 사용 82초. 블렌더 상호배제 구간(용기거치→블렌딩→따르기→린스 59초)이 실질적으로 이미 이 값 안에 반영되어 있어, 스무디 2잔이 겹치면 블렌더 대기가 자연히 누적됨"
       },
       "recipe_ref": "recipe.json#/drinks/strawberry_smoothie"
+    },
+    "ice_cream_vanilla": {
+      "name_kr": "바닐라 아이스크림",
+      "first_cup_sec": 20,
+      "additional_cup_sec": 20,
+      "complexity": 1,
+      "equipment": [
+        "ice_cream_freezer"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/ice_cream_vanilla"
+    },
+    "ice_cream_choco": {
+      "name_kr": "초코 아이스크림",
+      "first_cup_sec": 20,
+      "additional_cup_sec": 20,
+      "complexity": 1,
+      "equipment": [
+        "ice_cream_freezer"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/ice_cream_choco"
+    },
+    "chamomile_hot": {
+      "name_kr": "캐모마일 티(핫)",
+      "first_cup_sec": 147,
+      "additional_cup_sec": 27,
+      "complexity": 2,
+      "equipment": [
+        "hot_water"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/chamomile_hot"
+    },
+    "earl_grey_hot": {
+      "name_kr": "얼그레이 티(핫)",
+      "first_cup_sec": 147,
+      "additional_cup_sec": 27,
+      "complexity": 2,
+      "equipment": [
+        "hot_water"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/earl_grey_hot"
+    },
+    "peppermint_hot": {
+      "name_kr": "페퍼민트 티(핫)",
+      "first_cup_sec": 147,
+      "additional_cup_sec": 27,
+      "complexity": 2,
+      "equipment": [
+        "hot_water"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/peppermint_hot"
+    },
+    "yuja_tea_hot": {
+      "name_kr": "유자차(핫)",
+      "first_cup_sec": 28,
+      "additional_cup_sec": 28,
+      "complexity": 1,
+      "equipment": [
+        "hot_water"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/yuja_tea_hot"
+    },
+    "orange_juice": {
+      "name_kr": "오렌지 주스",
+      "first_cup_sec": 25,
+      "additional_cup_sec": 25,
+      "complexity": 1,
+      "equipment": [
+        "ice_dispenser",
+        "juice_dispenser"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/orange_juice"
+    },
+    "espresso": {
+      "name_kr": "에스프레소",
+      "first_cup_sec": 57,
+      "additional_cup_sec": 27,
+      "complexity": 2,
+      "equipment": [
+        "espresso_machine"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/espresso"
+    },
+    "affogato": {
+      "name_kr": "아포가토",
+      "first_cup_sec": 67,
+      "additional_cup_sec": 37,
+      "complexity": 2,
+      "equipment": [
+        "espresso_machine",
+        "ice_cream_freezer"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/affogato"
+    },
+    "hot_chocolate": {
+      "name_kr": "핫초코",
+      "first_cup_sec": 56,
+      "additional_cup_sec": 56,
+      "complexity": 2,
+      "equipment": [
+        "steam_wand"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/hot_chocolate"
+    },
+    "flat_white": {
+      "name_kr": "플랫 화이트",
+      "first_cup_sec": 88,
+      "additional_cup_sec": 58,
+      "complexity": 2,
+      "equipment": [
+        "espresso_machine",
+        "steam_wand"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/flat_white"
+    },
+    "einspanner": {
+      "name_kr": "아인슈페너",
+      "first_cup_sec": 85,
+      "additional_cup_sec": 55,
+      "complexity": 2,
+      "equipment": [
+        "espresso_machine",
+        "ice_dispenser"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/einspanner"
+    },
+    "blueberry_smoothie": {
+      "name_kr": "블루베리 스무디",
+      "first_cup_sec": 105,
+      "additional_cup_sec": 70,
+      "complexity": 2,
+      "equipment": [
+        "blender"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/blueberry_smoothie"
+    },
+    "iced_earl_grey": {
+      "name_kr": "아이스 얼그레이 티",
+      "first_cup_sec": 155,
+      "additional_cup_sec": 35,
+      "complexity": 2,
+      "equipment": [
+        "hot_water",
+        "ice_dispenser"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/iced_earl_grey"
+    },
+    "iced_chamomile": {
+      "name_kr": "아이스 캐모마일 티",
+      "first_cup_sec": 155,
+      "additional_cup_sec": 35,
+      "complexity": 2,
+      "equipment": [
+        "hot_water",
+        "ice_dispenser"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/iced_chamomile"
+    },
+    "iced_yuja_tea": {
+      "name_kr": "아이스 유자차",
+      "first_cup_sec": 36,
+      "additional_cup_sec": 36,
+      "complexity": 2,
+      "equipment": [
+        "ice_dispenser"
+      ],
+      "constraint_ids": [],
+      "quality_hold": null,
+      "basis": "estimate",
+      "note": "first_cup_sec = 단계 시간 전체 합(기계·타이머 시간 포함), additional_cup_sec = 바리스타가 손을 쓰는 시간만. 제안값이라 실측으로 바꿔야 한다.",
+      "recipe_ref": "recipe.json#/drinks/iced_yuja_tea"
     }
   },
   "fallback_rules": [
