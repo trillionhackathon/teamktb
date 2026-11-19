@@ -1,119 +1,151 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { callApi, createRequestId, orderPath } from './client/api.ts';
+import { useEffect, useMemo, useState } from 'react';
+import { callApi, orderPath } from './client/api.ts';
+import {
+  agentAlerts, candidateOrders, emptyQuestState, itemKey, rankCandidates, reconcile, FIXED_COUNT, CANDIDATE_COUNT,
+  type AgentAlert, type QuestState, type TipLine,
+} from './client/quest-board.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
-import type { MenuItemInput } from './domain/types.ts';
-import type { BoardSnapshot, OrderItemView, OrderView } from './domain/views.ts';
-
-// 예시 주문은 MVP 3종(아아·라떼·딸기스무디, recipe.json mvp_menus)으로 만든다.
-const demoOrders: { channel: 'dine-in' | 'takeout' | 'delivery'; menu_items: MenuItemInput[]; request_note?: string }[] = [
-  { channel: 'takeout', menu_items: [{ menu: 'iced_americano', qty: 1 }] },
-  { channel: 'dine-in', menu_items: [{ menu: 'latte', qty: 2, options: ['milk_oat'] }] },
-  { channel: 'delivery', menu_items: [{ menu: 'strawberry_smoothie', qty: 1 }, { menu: 'iced_americano', qty: 2, options: ['ice_less'] }], request_note: '얼음 적게 부탁드려요' },
-  { channel: 'dine-in', menu_items: [{ menu: 'iced_americano', qty: 2, options: ['shot_add'] }] },
-  { channel: 'takeout', menu_items: [{ menu: 'latte', qty: 1 }, { menu: 'strawberry_smoothie', qty: 1 }] },
-];
+import type { BoardSnapshot, OrderView } from './domain/views.ts';
+import type { DemoFeedStatus } from './server/demo-feed.ts';
 
 const connectionLabels: Record<Connection, string> = { connecting: '연결 중', live: '실시간 연결됨', reconnecting: '재연결 중' };
+const storageKey = 'ilmori-quest-board-v2';
 
-function decisionLabel(decision: BoardSnapshot['decision']): string {
-  if (decision.ai_status === 'disabled') return '규칙 판단 · AI 서버 미설정';
-  if (decision.ai_status === 'unavailable') return '규칙 판단 · AI 서버 미응답';
-  return decision.source === 'zoro' ? 'AI 서버 · Zoro 판단' : 'AI 서버 · 규칙 판단';
+function isQuestState(value: unknown): value is QuestState {
+  if (!value || typeof value !== 'object') return false;
+  const state = value as Partial<QuestState>;
+  return Array.isArray(state.fixed) && typeof state.prepared === 'object' && typeof state.overtakes === 'object' && typeof state.promoted === 'object';
 }
 
-function waitLabel(seconds: number | undefined): string {
-  return seconds === undefined ? '-' : `약 ${Math.max(1, Math.ceil(seconds / 60))}분`;
+// 고정칸, 미리 만든 메뉴, 앞지르기 횟수는 이 브라우저에만 저장한다(목업). 새로고침해도 퀘스트가 이어진다.
+function useQuestBoard(board: OrderView[]): QuestState {
+  const [state, setState] = useState<QuestState>(emptyQuestState);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null');
+      if (isQuestState(saved)) setState(saved);
+    } catch {
+      // 저장소를 못 읽으면 빈 상태에서 시작한다.
+    }
+    setLoaded(true);
+  }, []);
+
+  const next = useMemo(() => reconcile(state, board), [state, board]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const text = JSON.stringify(next);
+    if (text !== JSON.stringify(state)) setState(next);
+    try {
+      window.localStorage.setItem(storageKey, text);
+    } catch {
+      // 저장하지 못해도 화면은 그대로 동작한다.
+    }
+  }, [next, state, loaded]);
+
+  return next;
 }
 
-function OrderItems({ items }: { items: OrderItemView[] }) {
+function AlertCard({ alert }: { alert: AgentAlert }) {
   return (
-    <ul className="order-items" aria-label="제조할 음료">
-      {items.map(({ name, qty, options }, index) => (
-        <li key={index}>
-          <div className="order-item-main"><strong>{name}</strong><span>{qty}잔</span></div>
-          {options.length > 0 && <p className="order-item-note">{options.join(', ')}</p>}
-        </li>
-      ))}
+    <li className={`agent-alert level-${alert.level}`}>
+      <div className="agent-alert-head">
+        <strong>{alert.title}</strong>
+        {alert.sample ? <span className="sample-badge">예시</span> : alert.at ? <span className="agent-alert-time">{formatClock(alert.at)}</span> : null}
+      </div>
+      <p>{alert.detail}</p>
+    </li>
+  );
+}
+
+function OrderLines({ order, prepared }: { order: OrderView; prepared: Record<string, number> }) {
+  const left = { ...prepared };
+  return (
+    <ul className="card-items">
+      {order.items.map((item, index) => {
+        const key = itemKey(item);
+        const done = Math.min(item.qty, left[key] ?? 0);
+        left[key] = (left[key] ?? 0) - done;
+        return (
+          <li key={index} className={done === item.qty ? 'item-done' : undefined}>
+            <span className="item-name">{item.name}</span>
+            <span className="item-qty">{item.qty}잔</span>
+            {item.options.length > 0 && <span className="item-options">{item.options.join(', ')}</span>}
+            {done > 0 && <span className="item-prepared">{done}잔 미리 만듦</span>}
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 function OrderFlags({ order }: { order: OrderView }) {
-  return (
-    <>
-      {order.blocked_reason && <p className="ticket-flag flag-blocked">{order.blocked_reason}</p>}
-      {order.needs_confirmation && <p className="ticket-flag flag-confirm">{order.order_id} 픽업 시간을 확인해 주세요</p>}
-      {order.eta_confirmed && order.pickup_eta_seconds != null && <p className="ticket-flag">픽업 {Math.round(order.pickup_eta_seconds / 60)}분 뒤 확정</p>}
-      {order.rider_status === 'arrived' && <p className="ticket-flag flag-event">라이더 도착</p>}
-      {order.request_note && <p className="ticket-note">요청사항 {order.request_note}</p>}
-    </>
-  );
+  const flags = [
+    order.blocked_reason && { text: order.blocked_reason, tone: 'muted' },
+    order.rider_status === 'arrived' && { text: '라이더 도착', tone: 'danger' },
+    order.needs_confirmation && { text: '픽업 시간 확인 필요', tone: 'warn' },
+    order.request_note && { text: `요청사항: ${order.request_note}`, tone: 'muted' },
+  ].filter((flag): flag is { text: string; tone: string } => Boolean(flag));
+  if (flags.length === 0) return null;
+  return <div className="card-flags">{flags.map(({ text, tone }) => <p key={text} className={`card-flag tone-${tone}`}>{text}</p>)}</div>;
+}
+
+function tipText(line: TipLine, slotOf: (id: string) => number): string {
+  if (line.kind === 'make') return `${line.label} ${line.qty}잔 만들기`;
+  return `${slotOf(line.order_id)}번 주문 완료 누르기`;
+}
+
+function tipReason(line: TipLine, head: OrderView, slotOf: (id: string) => number, hasNext: boolean): string {
+  const slotName = (id: string) => (slotOf(id) > 0 ? `${slotOf(id)}번` : id);
+  if (line.kind === 'make') {
+    if (line.parts.length === 1) return `${slotName(head.order_id)} 주문에만 있는 메뉴예요.`;
+    return `${line.parts.map(({ order_id: id, qty }) => `${slotName(id)} ${qty}잔`).join(' + ')}을 한 번에 만들어요.`;
+  }
+  const sentences: string[] = [];
+  if (line.preparedQty > 0) sentences.push(`${line.preparedQty}잔은 앞 주문을 만들 때 같이 만들어 두었어요.`);
+  sentences.push(hasNext ? '다 만들면 위 1번 칸에서 완료를 눌러요. 다음 주문 퀘스트로 넘어가요.' : '다 만들면 위 1번 칸에서 완료를 눌러요.');
+  return sentences.join(' ');
 }
 
 export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const { snapshot: live, connection, clockOffset } = useBoardSnapshot(initial);
   const snapshot = live ?? initial;
   const now = useNow(clockOffset);
-  const [entry, setEntry] = useState('');
-  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
+  const quest = useQuestBoard(snapshot.board);
   const [busy, setBusy] = useState(false);
-  const [autoReceive, setAutoReceive] = useState(false);
-  const [scenarioId, setScenarioId] = useState(snapshot.scenario?.id ?? '');
-  const demoIndex = useRef(0);
+  const [error, setError] = useState<string | null>(null);
+  const [feed, setFeed] = useState<DemoFeedStatus | null>(null);
 
-  const { board, config, decision } = snapshot;
-  const visible = board.filter(({ zone }) => zone !== 'queue');
-  const queue = board.filter(({ zone }) => zone === 'queue');
-  const active = board.find(({ status }) => status === 'in_progress');
-  const next = active ?? board.find(({ status, blocked_reason: blocked }) => status === 'waiting' && !blocked);
-  const latestEvent = snapshot.events[0];
-  // 칸 틀은 주문 수와 상관없이 항상 1~visibleCount번을 그린다. 순서가 바뀌면 칸은 그대로 두고 칸 안의 주문만 교체한다.
-  const slots = Array.from({ length: config.visibleCount }, (_, index) => ({ slot: index + 1, order: visible.find(({ slot }) => slot === index + 1) }));
-  const flexibleSlots = slots.slice(config.lockedCount);
-  const moveTo = (slot: number) => decision.moves.find(({ to }) => to === slot);
-
+  // 시연용 자동 주문 상태. 보드가 바뀔 때마다 다시 읽어 다른 화면에서 켜고 끈 것도 따라간다.
   useEffect(() => {
-    if (snapshot.scenario) setScenarioId(snapshot.scenario.id);
-  }, [snapshot.scenario?.id]);
+    void callApi<DemoFeedStatus>('/api/demo-feed').then((result) => { if (result.ok) setFeed(result.data); });
+  }, [snapshot.state_version]);
 
-  useEffect(() => {
-    if (!autoReceive) return;
-    const timer = window.setInterval(() => { void addDemoOrder(); }, 8000);
-    return () => window.clearInterval(timer);
-  }, [autoReceive]);
+  async function toggleFeed() {
+    const result = await callApi<DemoFeedStatus>('/api/demo-feed', { body: { running: !feed?.running } });
+    if (result.ok) setFeed(result.data);
+    else setError(result.error);
+  }
 
-  async function run<T>(action: () => Promise<{ ok: true; data: T } | { ok: false; error: string }>, success?: (data: T) => string) {
+  const byId = new Map(snapshot.board.map((order) => [order.order_id, order]));
+  const fixedOrders = quest.fixed.map((id) => byId.get(id)).filter((order): order is OrderView => order !== undefined);
+  const candidates = rankCandidates(candidateOrders(snapshot.board, quest.fixed), fixedOrders, quest.prepared, quest.overtakes);
+  const queueCount = Math.max(0, snapshot.board.length - fixedOrders.length - candidates.length);
+  const slotOf = (id: string) => quest.fixed.indexOf(id) + 1;
+  const head = fixedOrders[0];
+  const alerts = agentAlerts(snapshot, now);
+
+  // 시작 단계 없이 바로 완료한다. 서버는 대기 중인 주문의 완료도 받는다.
+  async function completeOrder(order: OrderView) {
     setBusy(true);
-    const result = await action();
+    const result = await callApi(orderPath(order.order_id), { method: 'PATCH', body: { action: 'complete' } });
     setBusy(false);
-    if (result.ok) setNotice(success ? { text: success(result.data), error: false } : null);
-    else setNotice({ text: result.error, error: true });
-    return result;
-  }
-
-  function addDemoOrder() {
-    const sample = demoOrders[demoIndex.current % demoOrders.length];
-    demoIndex.current += 1;
-    return run(
-      () => callApi<{ order: OrderView }>('/api/orders', { body: { ...sample, source: 'demo', request_id: createRequestId('demo') } }),
-      ({ order }) => `${order.order_id} 예시 주문이 접수됐어요.`,
-    );
-  }
-
-  function changeStatus(order: OrderView, action: 'start' | 'complete') {
-    return run(() => callApi(orderPath(order.order_id), { method: 'PATCH', body: { action } }));
-  }
-
-  function submitEvent(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const text = entry.trim();
-    if (!text) return;
-    void run(() => callApi('/api/events', { body: { event_id: createRequestId('event'), raw_text: text } })).then((result) => {
-      if (result.ok) setEntry('');
-    });
+    setError(result.ok ? null : result.error);
   }
 
   return (
@@ -123,202 +155,107 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
           <span className="brand">일머리</span>
           <span className="topbar-meta">
             <span className={`connection connection-${connection}`} role="status">{connectionLabels[connection]}</span>
+            {feed && (
+              <button type="button" className={`feed-toggle${feed.running ? ' on' : ''}`} onClick={toggleFeed} title={feed.last_error}>
+                {feed.running ? `자동 주문 켜짐 ${feed.created}건` : '자동 주문 켜기'}
+              </button>
+            )}
             <Link className="topbar-link" href="/kiosk" target="_blank">키오스크 열기</Link>
             <Link className="topbar-link" href="/delivery" target="_blank">배달 목업 열기</Link>
           </span>
         </div>
       </header>
 
-      <main className="dashboard">
-        <div className="board-heading">
-          <div>
-            <p className="board-context">{snapshot.scenario ? `${snapshot.scenario.id} · ${snapshot.scenario.title}` : '실시간 주문'}</p>
-            <h1>주방 운영 보드</h1>
+      <main className="quest-layout">
+        <aside className="agent-panel" aria-labelledby="agent-title">
+          <div className="section-heading">
+            <h2 id="agent-title">매장 알림</h2>
+            <span className="section-meta">{alerts.length}건</span>
           </div>
-          <dl className="totals" aria-label="주문 상태 요약">
-            <div><dt>대기</dt><dd>{snapshot.counts.waiting}</dd></div>
-            <div><dt>제조 중</dt><dd>{snapshot.counts.in_progress}</dd></div>
-            <div><dt>완료</dt><dd>{snapshot.counts.done}</dd></div>
-            <div><dt>대기열</dt><dd>{queue.length}</dd></div>
-          </dl>
-        </div>
+          <p className="section-sub">에이전트가 재고와 매장 상황을 살펴보고 알려 줘요.</p>
+          <ul className="agent-list" aria-live="polite">
+            {alerts.map((alert) => <AlertCard key={alert.id} alert={alert} />)}
+          </ul>
+        </aside>
 
-        <section className="orders-panel" aria-labelledby="orders-title">
-          <div className="panel-heading">
-            <h2 id="orders-title">주문 보드</h2>
-            <span className="panel-meta">윗줄 1~{config.lockedCount}번 접수순 고정 · 아랫줄 {config.lockedCount + 1}~{config.visibleCount}번 재배치</span>
-          </div>
-          <div className="board-grid" role="region" aria-label="2줄 5칸 주문 보드" tabIndex={0}>
-            {slots.map(({ slot, order }) => {
-              const locked = slot <= config.lockedCount;
-              const slotMove = moveTo(slot);
-              const move = order && slotMove?.order_id === order.order_id ? slotMove : undefined;
-              return (
-                <article
-                  key={slot}
-                  className={`board-slot${order ? '' : ' empty'}${order && order.order_id === next?.order_id ? ' recommended' : ''}${order?.move_reason ? ' moved' : ''}${order?.blocked_reason ? ' blocked' : ''}`}
-                  aria-label={order ? `${slot}번 칸 ${order.order_id} 주문` : `${slot}번 칸 비어 있음`}
-                >
-                  <div className="ticket-slot">
-                    <span>{slot}번 칸 · {locked ? '고정' : '재배치'}</span>
-                    {move
-                      ? <span className="slot-move" role="img" aria-label={`${move.from}번에서 ${move.to}번으로 이동`}>↑ {move.from}번에서</span>
-                      : <span className="ticket-status">{order?.status === 'in_progress' ? '제조 중' : order && order.order_id === next?.order_id ? '다음 작업' : ''}</span>}
-                  </div>
-                  {order ? (
-                    <div className="ticket-body" key={order.order_id}>
-                      <div className="ticket-top">
-                        <strong className="order-number">{order.order_id}</strong>
-                        <div className="ticket-channel"><span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span><span>{order.source_label}</span></div>
-                      </div>
-                      <div className="ticket-meta"><span>{formatClock(order.received_at)} 접수</span><span>{formatElapsed(order.received_at, now)}</span></div>
-                      <OrderItems items={order.items} />
-                      <div className="ticket-flags">
-                        {order.move_reason && <p className="ticket-flag flag-event">{order.move_reason}</p>}
-                        <OrderFlags order={order} />
-                      </div>
-                      <div className="ticket-bottom">
-                        <span>완료 {waitLabel(order.eta_seconds)}</span>
-                        {order.status === 'in_progress'
-                          ? <button type="button" className="ticket-button" disabled={busy} onClick={() => changeStatus(order, 'complete')}>완료</button>
-                          : <button type="button" className="ticket-button" disabled={busy || Boolean(order.blocked_reason)} onClick={() => changeStatus(order, 'start')}>시작</button>}
-                      </div>
-                    </div>
-                  ) : <p className="slot-empty">빈 칸</p>}
-                </article>
-              );
-            })}
-          </div>
-          <div className="queue-strip" aria-label="화면 밖 대기열">
-            <span className="queue-label">대기열 {queue.length}건</span>
-            {queue.length > 0
-              ? <ol>
-                  {queue.map((order) => (
-                    <li key={order.order_id}>
-                      <strong>{order.order_id}</strong> {order.items.map(({ name, qty }) => `${name} ${qty}잔`).join(', ')}
-                      <span>{order.channel_label} · 완료 {waitLabel(order.eta_seconds)}</span>
-                    </li>
-                  ))}
-                </ol>
-              : <span className="queue-empty">10번 칸 뒤에 기다리는 주문이 없어요.</span>}
-          </div>
-        </section>
-
-        <div className="dashboard-grid">
-          <section className="panel ranking-panel" aria-labelledby="ranking-title">
-            <div className="panel-heading">
-              <h2 id="ranking-title">Zoro 우선순위 판단</h2>
-              <span className="panel-meta" title={decision.ai_error}>{decisionLabel(decision)}</span>
+        <div className="quest-main">
+          <section className="board-section" aria-labelledby="board-title">
+            <div className="section-heading">
+              <h2 id="board-title">일머리 보드</h2>
+              <span className="section-meta">{queueCount > 0 ? `보드 밖 대기 ${queueCount}건` : '보드 밖 대기 없음'}</span>
             </div>
-            <div className="ranking-labels" aria-hidden="true"><span>칸</span><span>재배치 대상</span><span>완료</span></div>
-            <ol className="ranking-list" aria-label="재배치칸 판단 결과" tabIndex={0}>
-              {flexibleSlots.map(({ slot, order }) => {
-                const move = order ? decision.moves.find(({ order_id: id }) => id === order.order_id) : undefined;
+            {error && <p className="board-error" role="alert">{error}</p>}
+
+            <p className="row-label">지금 만들 주문</p>
+            <div className="quest-row" role="list" aria-label="고정 주문 4칸">
+              {Array.from({ length: FIXED_COUNT }, (_, index) => {
+                const order = fixedOrders[index];
+                const slot = index + 1;
+                if (!order) return <div key={slot} role="listitem" className="quest-card empty"><span className="slot-number">{slot}</span><p className="card-empty">빈 칸</p></div>;
                 return (
-                  <li className={`rank-row${move ? ' rank-event' : ''}${order ? '' : ' rank-empty'}`} key={slot}>
-                    <div className="rank-position">
-                      <strong>{slot}</strong>
-                      {move && <span className="rank-movement up" role="img" aria-label={`${move.from}번에서 ${move.to}번으로 이동`}>↑{move.from - move.to}</span>}
-                    </div>
-                    {order ? (
-                      <div className="rank-order" key={order.order_id}>
-                        <strong><span>{order.order_id}</span> {[...new Set(order.items.map(({ name }) => name))].join(', ')}</strong>
-                        <p>{order.blocked_reason ?? order.move_reason ?? (order.status === 'in_progress' ? '제조 중' : '접수순 유지')}</p>
+                  <article key={slot} role="listitem" className={`quest-card fixed${index === 0 ? ' head' : ''}`} aria-label={`${slot}번 칸 ${order.order_id} 주문`}>
+                    <div className="card-body" key={order.order_id}>
+                      <div className="card-head">
+                        <span className="slot-number">{slot}</span>
+                        <strong className="card-order">{order.order_id}</strong>
+                        <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
                       </div>
-                    ) : <div className="rank-order"><p>빈 칸</p></div>}
-                    <strong className="rank-score">{order ? waitLabel(order.eta_seconds) : ''}</strong>
-                  </li>
+                      <p className="card-wait">{formatElapsed(order.received_at, now)}</p>
+                      <OrderLines order={order} prepared={quest.prepared[order.order_id] ?? {}} />
+                      <OrderFlags order={order} />
+                      <div className="card-foot">
+                        <button type="button" className="card-button complete" disabled={busy} onClick={() => completeOrder(order)}>완료</button>
+                      </div>
+                    </div>
+                  </article>
                 );
               })}
-            </ol>
-            {snapshot.tips.length > 0 && (
-              <ul className="ai-tips" aria-label="일머리 팁">
-                {snapshot.tips.map((tip) => (
-                  <li key={tip.id}>
-                    <span>일머리 팁 · {tip.source}</span>{tip.text}
-                    <button type="button" className="tip-dismiss" disabled={busy} onClick={() => run(() => callApi(`/api/tips/${encodeURIComponent(tip.id)}`, { method: 'DELETE' }))}>해제</button>
+            </div>
+
+            <p className="row-label">Zoro가 고른 다음 주문 <span>위 칸이 비면 왼쪽부터 올라가요</span></p>
+            <div className="quest-row" role="list" aria-label="다음 후보 주문 4칸">
+              {Array.from({ length: CANDIDATE_COUNT }, (_, index) => {
+                const candidate = candidates[index];
+                const slot = FIXED_COUNT + index + 1;
+                if (!candidate) return <div key={slot} role="listitem" className="quest-card empty candidate"><span className="slot-number">{slot}</span><p className="card-empty">빈 칸</p></div>;
+                const { order, reason } = candidate;
+                return (
+                  <article key={slot} role="listitem" className={`quest-card candidate${index === 0 ? ' up-next' : ''}`} aria-label={`${slot}번 칸 ${order.order_id} 후보 주문`}>
+                    <div className="card-body" key={order.order_id}>
+                      <div className="card-head">
+                        <span className="slot-number">{slot}</span>
+                        <strong className="card-order">{order.order_id}</strong>
+                        <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
+                      </div>
+                      <OrderLines order={order} prepared={quest.prepared[order.order_id] ?? {}} />
+                      <p className="card-reason"><strong>{index === 0 ? '다음 차례' : 'Zoro 판단'}</strong>{reason}</p>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="tip-section" aria-labelledby="tip-title" aria-live="polite">
+            <div className="section-heading">
+              <h2 id="tip-title">일머리 TIP</h2>
+              {head && <span className="tip-status is-working">지금 1번 주문 {head.order_id}</span>}
+            </div>
+            {head && quest.plan ? (
+              <ol className="tip-list">
+                {quest.plan.lines.map((line, index) => (
+                  <li key={line.kind === 'make' ? line.key : 'complete'} className={`tip-line${line.kind === 'complete' ? ' tip-complete' : ''}`}>
+                    <span className="tip-step">{index + 1}</span>
+                    <div>
+                      <p className="tip-text">{tipText(line, slotOf)}</p>
+                      <p className="tip-reason"><strong>Zoro 판단</strong>{tipReason(line, head, slotOf, fixedOrders.length > 1)}</p>
+                    </div>
                   </li>
                 ))}
-              </ul>
+              </ol>
+            ) : (
+              <p className="tip-empty">들어온 주문이 없어요. 키오스크나 배달 목업에서 주문을 넣어 보세요.</p>
             )}
-          </section>
-
-          <section className="panel event-panel" aria-labelledby="event-title">
-            <div className="panel-heading"><h2 id="event-title">매장 상황</h2><span className="panel-meta">원두 {snapshot.signals.inventory.coffee_beans_shots_left}샷 · 딸기 {snapshot.signals.inventory.strawberry_servings_left}인분</span></div>
-            <div className="scenario-picker">
-              <label htmlFor="scenario-select">시나리오</label>
-              <div className="input-wrap">
-                <select id="scenario-select" value={scenarioId} onChange={(e) => setScenarioId(e.target.value)}>
-                  {snapshot.scenarios.map(({ id, title }) => <option key={id} value={id}>{id} · {title}</option>)}
-                </select>
-                <button type="button" disabled={busy || !scenarioId} onClick={() => run(() => callApi('/api/scenarios', { body: { scenario_id: scenarioId } }), () => '시나리오 시작 상태로 바꿨어요.')}>불러오기</button>
-              </div>
-              {snapshot.scenario && snapshot.scenario.triggers.length > 0 && (
-                <div className="event-examples" aria-label="시나리오 입력 재생">
-                  {snapshot.scenario.triggers.map((label, index) => (
-                    <button type="button" key={label} disabled={busy} onClick={() => run(() => callApi('/api/scenarios', { body: { scenario_id: snapshot.scenario!.id, trigger: index } }))}>{index + 1}. {label}</button>
-                  ))}
-                </div>
-              )}
-              {snapshot.scenario && <p className="scenario-expected">기대 결과 {snapshot.scenario.expected}</p>}
-            </div>
-            <div className={`event-log${latestEvent && !latestEvent.needs_confirmation ? ' event-applied' : ''}`} aria-live="polite">
-              <div className="event-meta">
-                <span>{latestEvent ? `최근 입력 · ${formatClock(latestEvent.received_at)}` : '최근 입력'}</span>
-                <span>{latestEvent ? (latestEvent.needs_confirmation ? '확인 필요' : latestEvent.category) : '-'}</span>
-              </div>
-              <p className="event-message">{latestEvent ? latestEvent.raw_text : '아직 입력된 상황이 없어요.'}</p>
-              {latestEvent && <p className="event-summary">{latestEvent.summary}{latestEvent.intent ? ` · AI 분류 ${latestEvent.intent.intent} (${latestEvent.intent.source})` : ''}</p>}
-            </div>
-            <form className="event-form" onSubmit={submitEvent}>
-              <label htmlFor="event-entry">상황 입력</label>
-              <div className="input-wrap">
-                <input id="event-entry" value={entry} onChange={(e) => setEntry(e.target.value)} placeholder="예: 108번 라이더 도착했어요" maxLength={300} />
-                <button type="submit" disabled={busy || !entry.trim()}>상황 반영</button>
-              </div>
-            </form>
-            {notice && <p className={`dashboard-notice${notice.error ? ' error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
-          </section>
-
-          <section className="action-panel" aria-labelledby="action-title" aria-live="polite">
-            <h2 id="action-title">{active ? '제조 중' : '지금 할 작업'}</h2>
-            {next ? <>
-              <p className="action-task">{next.items.length === 1 ? `${next.items[0].name} ${next.items[0].qty}잔 만들기` : `주문 ${next.order_id} 제조하기`}</p>
-              <div className="action-detail">
-                <span>주문 {next.order_id} · {next.slot}번 칸</span>
-                <span>남은 작업 {Math.ceil(next.remaining_work_seconds / 60)}분 이내</span>
-                {next.request_note && <span>요청사항 {next.request_note}</span>}
-              </div>
-              {next.items.length > 1 && <OrderItems items={next.items} />}
-              <button className="action-button" type="button" disabled={busy} onClick={() => changeStatus(next, active ? 'complete' : 'start')}>{active ? '제조 완료' : '제조 시작'}</button>
-            </> : <p className="action-task">모든 주문이 완료됐어요</p>}
-          </section>
-
-          <section className="panel incoming-panel" aria-labelledby="incoming-title">
-            <div className="panel-heading">
-              <h2 id="incoming-title">주문 접수 내역</h2>
-              <span className="panel-meta" aria-live="polite">총 {snapshot.counts.waiting + snapshot.counts.in_progress + snapshot.counts.done}건</span>
-            </div>
-            <ol className="incoming-list" aria-label="최근 접수 주문부터 표시" tabIndex={0}>
-              {snapshot.history.map((order) => (
-                <li className={`incoming-row${order.status === 'done' ? ' done' : ''}`} key={order.order_id}>
-                  <span className="incoming-id">{order.order_id}</span>
-                  <div>
-                    <OrderItems items={order.items} />
-                    {order.request_note && <p className="incoming-note">{order.request_note}</p>}
-                  </div>
-                  <div className="incoming-meta">
-                    <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
-                    <span>{order.source_label}</span>
-                    <span>{order.status === 'done' ? '완료' : order.status === 'in_progress' ? '제조 중' : formatClock(order.received_at)}</span>
-                  </div>
-                </li>
-              ))}
-            </ol>
-            <div className="incoming-controls">
-              <button className="secondary-button" type="button" onClick={() => setAutoReceive((previous) => !previous)}>{autoReceive ? '자동 접수 중지' : '자동 접수 시작'}</button>
-              <button className="secondary-button" type="button" disabled={busy} onClick={() => { void addDemoOrder(); }}>예시 주문 추가</button>
-            </div>
           </section>
         </div>
       </main>
