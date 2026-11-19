@@ -1,6 +1,7 @@
-import type { Order } from '../demo-data';
+import type { Order, Signals } from '../domain/types.ts';
 
-// aiserver(feat/ai-skeleton) app/schemas.py와 맞춘 요청·응답 형식이다. 서버 스키마가 바뀌면 이 파일과 테스트를 함께 고친다.
+// aiserver(feat/ai-skeleton) app/schemas.py와 맞춘 요청·응답 형식이다. 서버 스키마가 바뀌면 이 파일과 tests/ai-contract.test.ts를 함께 고친다.
+// 응답은 aiserver main README 초안(tips 대신 feed, moves.confidence 생략)도 받는다.
 export type AiSource = 'zoro' | 'llm' | 'rule';
 
 export type AiOrder = {
@@ -14,7 +15,7 @@ export type AiOrder = {
   remake: boolean;
 };
 
-export type StoreState = {
+export type AiStoreState = {
   orders: AiOrder[];
   store: Record<string, string>;
   external: Record<string, string>;
@@ -22,7 +23,8 @@ export type StoreState = {
   baristas: number;
 };
 
-export type AiMove = { order_id: string; from: number; to: number; reason: string; confidence: number; source: AiSource };
+export type AiMove = { order_id: string; from: number; to: number; reason: string; confidence?: number; source: AiSource };
+export type AiFeedItem = { category: string; text: string; origin?: string; confidence?: number; source: AiSource };
 export type AiTip = { id: string; text: string; confidence: number; source: AiSource };
 
 export type DecideResult = {
@@ -31,6 +33,7 @@ export type DecideResult = {
   moves: AiMove[];
   eta: Record<string, string>;
   tips: AiTip[];
+  feed: AiFeedItem[];
   fallback: boolean;
 };
 
@@ -38,78 +41,61 @@ export type IntentResult = { intent: string; confidence: number; source: AiSourc
 
 const sources: AiSource[] = ['zoro', 'llm', 'rule'];
 
-export const moveReasonLabels: Record<string, string> = {
-  remake: '재제조 주문이라 맨 앞에 넣었어요',
-  rider_waiting: '라이더가 도착해 기다리고 있어요',
-  short_job: '제조 시간이 짧아 먼저 처리해요',
-  ai_hint: 'Zoro가 먼저 만들 주문으로 골랐어요',
-};
-
-export function toAiOrderId(id: number): string {
-  return `#${id}`;
+// cafe_db.json의 값(dine-in/takeout/delivery, not_dispatched/dispatched/arrived)을 aiserver 값으로 바꾼다.
+export function toAiChannel(channel: Order['channel']): AiOrder['channel'] {
+  return channel === 'delivery' ? 'delivery' : 'store';
 }
 
-export function fromAiOrderId(id: string): number | undefined {
-  const match = /^#(\d+)$/.exec(id);
-  return match ? Number(match[1]) : undefined;
+export function toAiRiderStatus(order: Pick<Order, 'channel' | 'rider_status'>): AiOrder['rider_status'] {
+  if (order.channel !== 'delivery') return 'none';
+  if (order.rider_status === 'arrived') return 'arrived';
+  return order.rider_status === 'dispatched' ? 'assigned' : 'none';
 }
 
-export function parseDurationSeconds(duration: string): number {
-  const minutes = /(\d+)\s*분/.exec(duration);
-  const seconds = /(\d+)\s*초/.exec(duration);
-  return (minutes ? Number(minutes[1]) * 60 : 0) + (seconds ? Number(seconds[1]) : 0);
-}
-
-// 대시보드 주문을 aiserver StoreState로 바꾼다. 포장은 aiserver에 별도 값이 없어 store로 보낸다.
-// created_at은 데모 시계 기준 대기 시간이 실제 시각과 같도록 now에서 거꾸로 계산한다.
-export function toStoreState(waiting: Order[], options: { clock: number; now: Date; riderArrivedIds?: number[] }): StoreState {
-  const riderArrived = new Set(options.riderArrivedIds ?? []);
-  const orders = [...waiting]
-    .sort((a, b) => a.receivedAt - b.receivedAt || a.id - b.id)
-    .map((order): AiOrder => ({
-      id: toAiOrderId(order.id),
-      items: order.items.map(({ name, quantity, note }) => `${name} ${quantity}잔${note ? `(${note})` : ''}`).join(', '),
-      channel: order.channel === '배달' ? 'delivery' : 'store',
-      created_at: new Date(options.now.getTime() - Math.max(0, options.clock - order.receivedAt) * 60_000).toISOString(),
-      prep_seconds: parseDurationSeconds(order.duration),
-      rider_status: order.channel === '배달' ? (riderArrived.has(order.id) ? 'arrived' : 'assigned') : 'none',
+// 보드 순서(1~5번 고정 + 재배치칸 + 대기열) 그대로 보낸다. 진행 중인 주문은 남은 작업 시간만 보낸다.
+export function toAiStoreState(board: Order[], signals: Signals, options: { describe: (order: Order) => string; remainingSeconds: (order: Order) => number }): AiStoreState {
+  const broken = Object.entries(signals.store.equipment_status).filter(([, status]) => status === 'broken').map(([name]) => name);
+  return {
+    orders: board.map((order) => ({
+      id: order.order_id,
+      items: options.describe(order),
+      channel: toAiChannel(order.channel),
+      created_at: order.received_at,
+      prep_seconds: Math.round(options.remainingSeconds(order)),
+      rider_status: toAiRiderStatus(order),
       overtaken: 0,
       remake: false,
-    }));
-  return { orders, store: {}, external: {}, inventory: {}, baristas: 2 };
+    })),
+    store: Object.fromEntries(broken.map((name) => [name === 'blender' ? '블렌더' : name, '고장'])),
+    external: signals.delivery.weather ? { 날씨: signals.delivery.weather } : {},
+    inventory: {
+      원두: `약 ${signals.inventory.coffee_beans_shots_left}샷`,
+      딸기: `${signals.inventory.strawberry_servings_left}인분`,
+    },
+    baristas: Math.max(1, signals.store.staff_count),
+  };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const isSource = (value: unknown): value is AiSource => sources.includes(value as AiSource);
 
-export function isStoreState(value: unknown): value is StoreState {
-  if (!isRecord(value) || !Array.isArray(value.orders) || value.orders.length > 200) return false;
-  return value.orders.every((order) => isRecord(order)
-    && typeof order.id === 'string' && order.id.length > 0 && order.id.length <= 20
-    && typeof order.items === 'string' && order.items.length <= 1000
-    && (order.channel === 'store' || order.channel === 'delivery')
-    && typeof order.created_at === 'string' && !Number.isNaN(Date.parse(order.created_at))
-    && Number.isSafeInteger(order.prep_seconds) && (order.prep_seconds as number) >= 0
-    && ['none', 'assigned', 'arrived'].includes(order.rider_status as string)
-    && Number.isSafeInteger(order.overtaken) && (order.overtaken as number) >= 0
-    && typeof order.remake === 'boolean')
-    && Number.isSafeInteger(value.baristas) && (value.baristas as number) >= 1;
-}
-
 export function parseDecideResult(value: unknown): DecideResult | undefined {
   if (!isRecord(value)) return undefined;
-  const { orders, locked_count: lockedCount, moves = [], eta = {}, tips = [], fallback = false } = value;
+  const { orders, locked_count: lockedCount, moves = [], eta = {}, tips = [], feed = [], fallback = false } = value;
   if (!Array.isArray(orders) || !orders.every((id) => typeof id === 'string')) return undefined;
   if (!Number.isSafeInteger(lockedCount) || (lockedCount as number) < 0) return undefined;
   if (!Array.isArray(moves) || !moves.every((move) => isRecord(move)
     && typeof move.order_id === 'string' && Number.isSafeInteger(move.from) && Number.isSafeInteger(move.to)
-    && typeof move.reason === 'string' && isFiniteNumber(move.confidence) && isSource(move.source))) return undefined;
+    && typeof move.reason === 'string' && (move.confidence === undefined || isFiniteNumber(move.confidence)) && isSource(move.source))) return undefined;
   if (!isRecord(eta) || !Object.values(eta).every((time) => typeof time === 'string' && !Number.isNaN(Date.parse(time)))) return undefined;
   if (!Array.isArray(tips) || !tips.every((tip) => isRecord(tip)
     && typeof tip.id === 'string' && typeof tip.text === 'string' && isFiniteNumber(tip.confidence) && isSource(tip.source))) return undefined;
+  if (!Array.isArray(feed) || !feed.every((item) => isRecord(item)
+    && typeof item.category === 'string' && typeof item.text === 'string'
+    && (item.confidence === undefined || isFiniteNumber(item.confidence)) && isSource(item.source))) return undefined;
   if (typeof fallback !== 'boolean') return undefined;
-  return { orders, locked_count: lockedCount as number, moves: moves as AiMove[], eta: eta as Record<string, string>, tips: tips as AiTip[], fallback };
+  return { orders, locked_count: lockedCount as number, moves: moves as AiMove[], eta: eta as Record<string, string>, tips: tips as AiTip[], feed: feed as AiFeedItem[], fallback };
 }
 
 export function parseIntentResult(value: unknown): IntentResult | undefined {
