@@ -1,0 +1,1766 @@
+{
+  "schema_version": "3.0",
+  "updated_at": "2026-11-19",
+  "origin": {
+    "note": "일반적인 프랜차이즈 카페의 표준 메뉴 구성을 참고해 새로 작성한 가상 데이터다. 특정 브랜드의 메뉴명·고유 레시피·가격 정책·시그니처 라인업을 복제하지 않는다.",
+    "brand": "Cafe KTB (가상 매장)",
+    "positioning": "중가형 프랜차이즈. R/L 2사이즈, 에스프레소 기반 + 논커피 + 블렌디드 + 베이커리"
+  },
+  "units_glossary": {
+    "oz": {
+      "desc": "컵 용량(온스)",
+      "ml": 29.57
+    },
+    "펌프": {
+      "desc": "시럽 디스펜서 1회 펌프",
+      "ml": 10
+    },
+    "스쿱": {
+      "desc": "파우더/과육 계량스쿱 1회분",
+      "g": 25
+    },
+    "샷": {
+      "desc": "에스프레소 더블샷",
+      "ml": 36,
+      "note": "원두 18g 사용"
+    }
+  },
+  "sizes": {
+    "note": "모든 음료의 ingredients/consumes_stock은 R 기준이다. L은 scale을 곱해 계산한다.",
+    "R": {
+      "name_kr": "레귤러",
+      "ml": 355,
+      "oz": 12,
+      "scale": 1.0,
+      "price_delta_krw": 0
+    },
+    "L": {
+      "name_kr": "라지",
+      "ml": 473,
+      "oz": 16,
+      "scale": 1.35,
+      "price_delta_krw": 500
+    }
+  },
+  "options": {
+    "note": "주문 옵션 카탈로그. aiserver의 event_interpretation이 배달앱 메모를 이 id로 구조화한다. prep_delta_sec은 cafe_db.json의 remaining_work 계산에 더해진다.",
+    "shot_add": {
+      "name_kr": "샷 추가",
+      "price_krw": 500,
+      "prep_delta_sec": 12,
+      "stock_delta": {
+        "espresso_shot": 1
+      },
+      "label": "recipe_affecting",
+      "batch_blocking": false
+    },
+    "shot_light": {
+      "name_kr": "연하게 (샷 1개)",
+      "price_krw": 0,
+      "prep_delta_sec": 0,
+      "stock_delta": {
+        "espresso_shot": -1
+      },
+      "label": "recipe_affecting",
+      "batch_blocking": false
+    },
+    "decaf": {
+      "name_kr": "디카페인",
+      "price_krw": 500,
+      "prep_delta_sec": 15,
+      "stock_delta": {},
+      "label": "resource_affecting",
+      "batch_blocking": true,
+      "note": "그라인더에 디카페인 원두를 다시 담아야 해 일반 샷과 묶을 수 없다"
+    },
+    "milk_oat": {
+      "name_kr": "오트밀크 변경",
+      "price_krw": 700,
+      "prep_delta_sec": 5,
+      "stock_delta": {
+        "milk": "replace_with:oat_milk"
+      },
+      "label": "resource_affecting",
+      "batch_blocking": true,
+      "note": "피처를 따로 써야 해 같은 메뉴라도 배칭 불가"
+    },
+    "milk_low_fat": {
+      "name_kr": "저지방 우유 변경",
+      "price_krw": 0,
+      "prep_delta_sec": 5,
+      "stock_delta": {
+        "milk": "replace_with:low_fat_milk"
+      },
+      "label": "resource_affecting",
+      "batch_blocking": true
+    },
+    "syrup_less": {
+      "name_kr": "덜 달게",
+      "price_krw": 0,
+      "prep_delta_sec": 0,
+      "stock_delta": {},
+      "label": "recipe_affecting",
+      "batch_blocking": false,
+      "note": "실제 배달 메모에서 가장 빈도 높은 요청"
+    },
+    "syrup_extra": {
+      "name_kr": "시럽 추가",
+      "price_krw": 0,
+      "prep_delta_sec": 3,
+      "stock_delta": {},
+      "label": "recipe_affecting",
+      "batch_blocking": false
+    },
+    "ice_less": {
+      "name_kr": "얼음 적게",
+      "price_krw": 0,
+      "prep_delta_sec": 0,
+      "stock_delta": {
+        "ice": -60
+      },
+      "label": "recipe_affecting",
+      "batch_blocking": false
+    },
+    "ice_extra": {
+      "name_kr": "얼음 많이",
+      "price_krw": 0,
+      "prep_delta_sec": 0,
+      "stock_delta": {
+        "ice": 60
+      },
+      "label": "recipe_affecting",
+      "batch_blocking": false
+    },
+    "ice_separate": {
+      "name_kr": "얼음 따로 담기",
+      "price_krw": 0,
+      "prep_delta_sec": 15,
+      "stock_delta": {},
+      "label": "packaging_only",
+      "batch_blocking": false,
+      "note": "배달에서 자주 들어온다. 제조가 아니라 포장 단계"
+    },
+    "whipped_add": {
+      "name_kr": "휘핑 추가",
+      "price_krw": 500,
+      "prep_delta_sec": 8,
+      "stock_delta": {
+        "whipping_cream": 1
+      },
+      "label": "recipe_affecting",
+      "batch_blocking": false
+    },
+    "whipped_none": {
+      "name_kr": "휘핑 빼기",
+      "price_krw": 0,
+      "prep_delta_sec": -8,
+      "stock_delta": {
+        "whipping_cream": -1
+      },
+      "label": "recipe_affecting",
+      "batch_blocking": false
+    },
+    "no_straw": {
+      "name_kr": "빨대 빼기",
+      "price_krw": 0,
+      "prep_delta_sec": 0,
+      "stock_delta": {},
+      "label": "packaging_only",
+      "batch_blocking": false
+    },
+    "cup_holder": {
+      "name_kr": "컵홀더 추가",
+      "price_krw": 0,
+      "prep_delta_sec": 3,
+      "stock_delta": {},
+      "label": "packaging_only",
+      "batch_blocking": false
+    }
+  },
+  "stock_keys": {
+    "espresso_shot": {
+      "unit": "shot",
+      "signal_field": "coffee_beans_shots_left",
+      "note": "1샷 = 원두 18g"
+    },
+    "milk": {
+      "unit": "ml",
+      "signal_field": null
+    },
+    "low_fat_milk": {
+      "unit": "ml",
+      "signal_field": null
+    },
+    "oat_milk": {
+      "unit": "ml",
+      "signal_field": null
+    },
+    "strawberry_pulp": {
+      "unit": "g",
+      "signal_field": "strawberry_servings_left",
+      "note": "1인분 = 180g"
+    },
+    "mango_pulp": {
+      "unit": "g",
+      "signal_field": null
+    },
+    "yogurt_powder": {
+      "unit": "g",
+      "signal_field": null
+    },
+    "matcha_powder": {
+      "unit": "g",
+      "signal_field": null
+    },
+    "choco_sauce": {
+      "unit": "ml",
+      "signal_field": null
+    },
+    "caramel_sauce": {
+      "unit": "ml",
+      "signal_field": null
+    },
+    "choco_chip": {
+      "unit": "g",
+      "signal_field": null
+    },
+    "cold_brew_concentrate": {
+      "unit": "ml",
+      "signal_field": null
+    },
+    "whipping_cream": {
+      "unit": "serving",
+      "signal_field": null
+    },
+    "ice": {
+      "unit": "g",
+      "signal_field": null
+    }
+  },
+  "allergen_codes": [
+    "milk",
+    "soy",
+    "wheat",
+    "egg",
+    "peanut",
+    "tree_nut",
+    "sulfite"
+  ],
+  "equipment_codes": {
+    "espresso_machine": "에스프레소 머신(추출)",
+    "steam_wand": "스팀완드(우유 가열·거품)",
+    "blender": "블렌더",
+    "ice_dispenser": "제빙기/아이스 디스펜서",
+    "hot_water": "온수 디스펜서",
+    "oven": "컨벡션 오븐(베이커리 워밍)",
+    "panini_grill": "파니니 그릴",
+    "refrigerator": "냉장 쇼케이스"
+  },
+  "complexity_tiers": {
+    "1": "단일 공정. 붓기 위주",
+    "2": "2개 이상 장비 또는 동기화 필요(샷+스팀 등)",
+    "3": "블렌딩·토핑 조립 포함"
+  },
+  "categories": {
+    "coffee": "커피",
+    "non_coffee": "논커피 라떼",
+    "tea_ade": "티·에이드",
+    "blended": "스무디·프라페",
+    "bakery": "베이커리",
+    "dessert": "디저트"
+  },
+  "drinks": [
+    {
+      "id": "iced_americano",
+      "name_kr": "아이스 아메리카노",
+      "name_en": "Iced Americano",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 4500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "espresso_machine",
+        "ice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": true,
+      "available_options": [
+        "shot_add",
+        "shot_light",
+        "decaf",
+        "ice_less",
+        "ice_extra",
+        "ice_separate",
+        "no_straw",
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "정수",
+          "amount": "150ml",
+          "qty": 150,
+          "unit": "ml"
+        },
+        {
+          "item": "에스프레소",
+          "amount": "2샷",
+          "stock_key": "espresso_shot",
+          "qty": 2,
+          "unit": "shot"
+        }
+      ],
+      "steps": [
+        "컵에 얼음을 담는다",
+        "정수 150ml를 붓는다",
+        "에스프레소 2샷을 추출해 붓는다",
+        "뚜껑·빨대 체결"
+      ],
+      "consumes_stock": {
+        "ice": 150,
+        "espresso_shot": 2
+      },
+      "quality_note": null
+    },
+    {
+      "id": "hot_americano",
+      "name_kr": "따뜻한 아메리카노",
+      "name_en": "Hot Americano",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "HOT",
+      "price_krw": 4500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "espresso_machine",
+        "hot_water"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "shot_light",
+        "decaf",
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "온수",
+          "amount": "250ml",
+          "qty": 250,
+          "unit": "ml"
+        },
+        {
+          "item": "에스프레소",
+          "amount": "2샷",
+          "stock_key": "espresso_shot",
+          "qty": 2,
+          "unit": "shot"
+        }
+      ],
+      "steps": [
+        "컵에 온수 250ml를 받는다",
+        "에스프레소 2샷을 추출해 붓는다",
+        "홀더 체결"
+      ],
+      "consumes_stock": {
+        "espresso_shot": 2
+      },
+      "quality_note": "추출 후 60초 내 제공 권장"
+    },
+    {
+      "id": "latte",
+      "name_kr": "카페 라떼",
+      "name_en": "Cafe Latte",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "HOT",
+      "price_krw": 5000,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "espresso_machine",
+        "steam_wand"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": true,
+      "available_options": [
+        "shot_add",
+        "shot_light",
+        "decaf",
+        "milk_oat",
+        "milk_low_fat",
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "에스프레소",
+          "amount": "2샷",
+          "stock_key": "espresso_shot",
+          "qty": 2,
+          "unit": "shot"
+        },
+        {
+          "item": "스팀 우유",
+          "amount": "180ml",
+          "stock_key": "milk",
+          "qty": 180,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "피처에 우유 180ml를 담는다",
+        "에스프레소 2샷 추출을 시작한다",
+        "추출이 도는 동안 우유를 55~60℃로 스티밍한다",
+        "스팀 완료 후 30초 안에 잔에 붓는다",
+        "완드 퍼지·청소"
+      ],
+      "consumes_stock": {
+        "espresso_shot": 2,
+        "milk": 180
+      },
+      "quality_note": "스팀 완료 → 붓기 30초 이내. 초과 시 거품·액상 분리(cafe_db.json의 Q-MILK)"
+    },
+    {
+      "id": "iced_latte",
+      "name_kr": "아이스 카페 라떼",
+      "name_en": "Iced Cafe Latte",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5000,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "espresso_machine",
+        "ice_dispenser"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "shot_light",
+        "decaf",
+        "milk_oat",
+        "milk_low_fat",
+        "ice_less",
+        "ice_extra",
+        "no_straw",
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "180ml",
+          "stock_key": "milk",
+          "qty": 180,
+          "unit": "ml"
+        },
+        {
+          "item": "에스프레소",
+          "amount": "2샷",
+          "stock_key": "espresso_shot",
+          "qty": 2,
+          "unit": "shot"
+        }
+      ],
+      "steps": [
+        "컵에 얼음을 담는다",
+        "차가운 우유 180ml를 붓는다",
+        "에스프레소 2샷을 추출해 붓는다"
+      ],
+      "consumes_stock": {
+        "ice": 150,
+        "milk": 180,
+        "espresso_shot": 2
+      },
+      "quality_note": null
+    },
+    {
+      "id": "cappuccino",
+      "name_kr": "카푸치노",
+      "name_en": "Cappuccino",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R"
+      ],
+      "temperature": "HOT",
+      "price_krw": 5000,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "espresso_machine",
+        "steam_wand"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "decaf",
+        "milk_oat",
+        "milk_low_fat",
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "에스프레소",
+          "amount": "2샷",
+          "stock_key": "espresso_shot",
+          "qty": 2,
+          "unit": "shot"
+        },
+        {
+          "item": "스팀 우유",
+          "amount": "140ml",
+          "stock_key": "milk",
+          "qty": 140,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "피처에 우유 140ml를 담는다",
+        "라떼보다 공기를 더 많이 주입해 두꺼운 거품을 만든다",
+        "에스프레소 2샷 위에 붓고 거품을 1cm 이상 올린다"
+      ],
+      "consumes_stock": {
+        "espresso_shot": 2,
+        "milk": 140
+      },
+      "quality_note": "거품 두께가 핵심. 스팀 후 즉시 제공",
+      "batch_blocker": "라떼와 거품 두께가 달라 같은 피처로 묶을 수 없다"
+    },
+    {
+      "id": "vanilla_latte_ice",
+      "name_kr": "아이스 바닐라 라떼",
+      "name_en": "Iced Vanilla Latte",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "espresso_machine",
+        "ice_dispenser"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "decaf",
+        "milk_oat",
+        "milk_low_fat",
+        "syrup_less",
+        "syrup_extra",
+        "ice_less",
+        "ice_extra",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "바닐라 시럽",
+          "amount": "2펌프",
+          "qty": 20,
+          "unit": "ml"
+        },
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "170ml",
+          "stock_key": "milk",
+          "qty": 170,
+          "unit": "ml"
+        },
+        {
+          "item": "에스프레소",
+          "amount": "2샷",
+          "stock_key": "espresso_shot",
+          "qty": 2,
+          "unit": "shot"
+        }
+      ],
+      "steps": [
+        "컵 바닥에 바닐라 시럽 2펌프",
+        "얼음을 담고 우유 170ml를 붓는다",
+        "에스프레소 2샷을 붓는다"
+      ],
+      "consumes_stock": {
+        "ice": 150,
+        "milk": 170,
+        "espresso_shot": 2
+      },
+      "quality_note": null
+    },
+    {
+      "id": "caramel_macchiato_ice",
+      "name_kr": "아이스 카라멜 마키아토",
+      "name_en": "Iced Caramel Macchiato",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 6000,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "espresso_machine",
+        "ice_dispenser"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "decaf",
+        "milk_oat",
+        "milk_low_fat",
+        "syrup_less",
+        "ice_less",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "바닐라 시럽",
+          "amount": "2펌프",
+          "qty": 20,
+          "unit": "ml"
+        },
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "170ml",
+          "stock_key": "milk",
+          "qty": 170,
+          "unit": "ml"
+        },
+        {
+          "item": "에스프레소",
+          "amount": "2샷",
+          "stock_key": "espresso_shot",
+          "qty": 2,
+          "unit": "shot"
+        },
+        {
+          "item": "카라멜 드리즐",
+          "amount": "15ml",
+          "stock_key": "caramel_sauce",
+          "qty": 15,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "컵 바닥에 바닐라 시럽 2펌프",
+        "얼음을 담고 우유 170ml를 붓는다",
+        "에스프레소 2샷을 천천히 층지게 붓는다",
+        "카라멜 소스를 격자로 드리즐"
+      ],
+      "consumes_stock": {
+        "ice": 150,
+        "milk": 170,
+        "espresso_shot": 2,
+        "caramel_sauce": 15
+      },
+      "quality_note": "층 분리가 비주얼 포인트. 젓지 않고 전달"
+    },
+    {
+      "id": "cafe_mocha_ice",
+      "name_kr": "아이스 카페 모카",
+      "name_en": "Iced Cafe Mocha",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 6000,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "espresso_machine",
+        "ice_dispenser"
+      ],
+      "allergens": [
+        "milk",
+        "soy"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "shot_add",
+        "decaf",
+        "milk_oat",
+        "milk_low_fat",
+        "whipped_add",
+        "whipped_none",
+        "syrup_less",
+        "ice_less",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "초콜릿 소스",
+          "amount": "30ml",
+          "stock_key": "choco_sauce",
+          "qty": 30,
+          "unit": "ml"
+        },
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "160ml",
+          "stock_key": "milk",
+          "qty": 160,
+          "unit": "ml"
+        },
+        {
+          "item": "에스프레소",
+          "amount": "2샷",
+          "stock_key": "espresso_shot",
+          "qty": 2,
+          "unit": "shot"
+        },
+        {
+          "item": "휘핑크림",
+          "amount": "1회분",
+          "stock_key": "whipping_cream",
+          "qty": 1,
+          "unit": "serving"
+        }
+      ],
+      "steps": [
+        "컵에 초콜릿 소스 30ml를 넣고 소량의 샷으로 녹인다",
+        "얼음을 담고 우유 160ml를 붓는다",
+        "남은 에스프레소를 붓는다",
+        "휘핑크림을 올린다"
+      ],
+      "consumes_stock": {
+        "choco_sauce": 30,
+        "ice": 150,
+        "milk": 160,
+        "espresso_shot": 2,
+        "whipping_cream": 1
+      },
+      "quality_note": "휘핑이 무너지므로 완성 후 즉시 제공"
+    },
+    {
+      "id": "cold_brew",
+      "name_kr": "콜드브루",
+      "name_en": "Cold Brew",
+      "category": "coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "ice_less",
+        "ice_extra",
+        "ice_separate",
+        "no_straw",
+        "cup_holder"
+      ],
+      "ingredients": [
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "콜드브루 원액",
+          "amount": "120ml",
+          "stock_key": "cold_brew_concentrate",
+          "qty": 120,
+          "unit": "ml"
+        },
+        {
+          "item": "정수",
+          "amount": "80ml",
+          "qty": 80,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "컵에 얼음을 담는다",
+        "콜드브루 원액 120ml를 붓는다",
+        "정수 80ml로 농도를 맞춘다"
+      ],
+      "consumes_stock": {
+        "ice": 150,
+        "cold_brew_concentrate": 120
+      },
+      "quality_note": null,
+      "note": "에스프레소 머신을 쓰지 않아 머신 혼잡 시 버퍼 음료로 유용"
+    },
+    {
+      "id": "green_tea_latte_ice",
+      "name_kr": "아이스 그린티 라떼",
+      "name_en": "Iced Green Tea Latte",
+      "category": "non_coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5800,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_dispenser"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "syrup_less",
+        "ice_less",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "그린티 파우더",
+          "amount": "2스쿱",
+          "stock_key": "matcha_powder",
+          "qty": 50,
+          "unit": "g"
+        },
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "200ml",
+          "stock_key": "milk",
+          "qty": 200,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "셰이커에 그린티 파우더 2스쿱과 우유 소량을 넣고 덩어리 없이 푼다",
+        "컵에 얼음을 담고 남은 우유를 붓는다",
+        "푼 그린티를 붓는다"
+      ],
+      "consumes_stock": {
+        "matcha_powder": 50,
+        "ice": 150,
+        "milk": 200
+      },
+      "quality_note": "파우더가 가라앉으므로 제공 직전 가볍게 저어준다"
+    },
+    {
+      "id": "chocolate_latte_ice",
+      "name_kr": "아이스 초콜릿",
+      "name_en": "Iced Chocolate",
+      "category": "non_coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_dispenser"
+      ],
+      "allergens": [
+        "milk",
+        "soy"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "whipped_add",
+        "syrup_less",
+        "ice_less",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "초콜릿 소스",
+          "amount": "40ml",
+          "stock_key": "choco_sauce",
+          "qty": 40,
+          "unit": "ml"
+        },
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "200ml",
+          "stock_key": "milk",
+          "qty": 200,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "컵에 초콜릿 소스 40ml를 넣고 우유 소량으로 푼다",
+        "얼음을 담고 남은 우유를 붓는다"
+      ],
+      "consumes_stock": {
+        "choco_sauce": 40,
+        "ice": 150,
+        "milk": 200
+      },
+      "quality_note": null
+    },
+    {
+      "id": "strawberry_latte_ice",
+      "name_kr": "아이스 딸기 라떼",
+      "name_en": "Iced Strawberry Latte",
+      "category": "non_coffee",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 6000,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_dispenser"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "syrup_less",
+        "ice_less",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "딸기 과육",
+          "amount": "90g",
+          "stock_key": "strawberry_pulp",
+          "qty": 90,
+          "unit": "g"
+        },
+        {
+          "item": "얼음",
+          "amount": "140g",
+          "stock_key": "ice",
+          "qty": 140,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "200ml",
+          "stock_key": "milk",
+          "qty": 200,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "컵 바닥에 딸기 과육 90g을 넣는다",
+        "얼음을 담고 우유 200ml를 붓는다",
+        "층이 보이도록 젓지 않고 전달"
+      ],
+      "consumes_stock": {
+        "strawberry_pulp": 90,
+        "ice": 140,
+        "milk": 200
+      },
+      "quality_note": "딸기 재고를 스무디와 공유한다. 재고 부족 시 stock_policy 판단 대상"
+    },
+    {
+      "id": "peach_iced_tea",
+      "name_kr": "복숭아 아이스티",
+      "name_en": "Peach Iced Tea",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 4800,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "syrup_less",
+        "syrup_extra",
+        "ice_less",
+        "ice_extra",
+        "ice_separate",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "복숭아 아이스티 파우더",
+          "amount": "3스쿱",
+          "qty": 75,
+          "unit": "g"
+        },
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "정수",
+          "amount": "250ml",
+          "qty": 250,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "셰이커에 파우더 3스쿱과 정수 250ml를 넣고 흔들어 녹인다",
+        "컵에 얼음을 담고 붓는다"
+      ],
+      "consumes_stock": {
+        "ice": 150
+      },
+      "quality_note": null
+    },
+    {
+      "id": "lemon_ade",
+      "name_kr": "레몬에이드",
+      "name_en": "Lemonade",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "syrup_less",
+        "syrup_extra",
+        "ice_less",
+        "ice_extra",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "레몬 베이스",
+          "amount": "4펌프",
+          "qty": 40,
+          "unit": "ml"
+        },
+        {
+          "item": "레몬 슬라이스",
+          "amount": "2개",
+          "qty": 2,
+          "unit": "ea"
+        },
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "탄산수",
+          "amount": "220ml",
+          "qty": 220,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "컵에 레몬 베이스 4펌프와 슬라이스를 넣는다",
+        "얼음을 담는다",
+        "제공 직전 탄산수 220ml를 붓는다"
+      ],
+      "consumes_stock": {
+        "ice": 150
+      },
+      "quality_note": "탄산 유지를 위해 제공 직전에 탄산수를 붓는다"
+    },
+    {
+      "id": "grapefruit_ade",
+      "name_kr": "자몽에이드",
+      "name_en": "Grapefruit Ade",
+      "category": "tea_ade",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "ICE",
+      "price_krw": 5800,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "ice_dispenser"
+      ],
+      "allergens": [],
+      "is_mvp_menu": false,
+      "available_options": [
+        "syrup_less",
+        "ice_less",
+        "ice_extra",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "자몽 과육 베이스",
+          "amount": "60ml",
+          "qty": 60,
+          "unit": "ml"
+        },
+        {
+          "item": "자몽 슬라이스",
+          "amount": "1개",
+          "qty": 1,
+          "unit": "ea"
+        },
+        {
+          "item": "얼음",
+          "amount": "150g",
+          "stock_key": "ice",
+          "qty": 150,
+          "unit": "g"
+        },
+        {
+          "item": "탄산수",
+          "amount": "200ml",
+          "qty": 200,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "컵에 자몽 베이스 60ml와 슬라이스를 넣는다",
+        "얼음을 담고 탄산수 200ml를 붓는다"
+      ],
+      "consumes_stock": {
+        "ice": 150
+      },
+      "quality_note": null
+    },
+    {
+      "id": "strawberry_smoothie",
+      "name_kr": "딸기 스무디",
+      "name_en": "Strawberry Smoothie",
+      "category": "blended",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "BLENDED",
+      "price_krw": 6500,
+      "complexity_tier": 3,
+      "equipment_required": [
+        "blender"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": true,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "syrup_less",
+        "whipped_add",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "냉동 딸기",
+          "amount": "180g",
+          "stock_key": "strawberry_pulp",
+          "qty": 180,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "160ml",
+          "stock_key": "milk",
+          "qty": 160,
+          "unit": "ml"
+        },
+        {
+          "item": "플레인 요거트 파우더",
+          "amount": "4스쿱",
+          "stock_key": "yogurt_powder",
+          "qty": 100,
+          "unit": "g"
+        },
+        {
+          "item": "바닐라 시럽",
+          "amount": "1펌프",
+          "qty": 10,
+          "unit": "ml"
+        }
+      ],
+      "steps": [
+        "블렌더 용기를 거치한다(직전 린스 완료 확인)",
+        "냉동 딸기 180g을 계량해 넣는다",
+        "우유 160ml, 요거트 파우더 4스쿱, 시럽 1펌프를 넣는다",
+        "뚜껑을 닫고 스무디 프로그램을 누른다(약 35초, 자동 정지)",
+        "블렌딩 중 다른 음료 작업 가능",
+        "컵에 따르고 뚜껑·빨대 체결",
+        "용기를 린서로 헹군다"
+      ],
+      "consumes_stock": {
+        "strawberry_pulp": 180,
+        "milk": 160,
+        "yogurt_powder": 100
+      },
+      "quality_note": "완성 후 90초 내 제공 권장. 300초 초과 시 상 분리(cafe_db.json의 Q-SMOOTHIE). 픽업 직전 블렌딩이 원칙",
+      "unattended_window_sec": 35
+    },
+    {
+      "id": "mango_smoothie",
+      "name_kr": "망고 스무디",
+      "name_en": "Mango Smoothie",
+      "category": "blended",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "BLENDED",
+      "price_krw": 6500,
+      "complexity_tier": 3,
+      "equipment_required": [
+        "blender"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "syrup_less",
+        "whipped_add",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "냉동 망고",
+          "amount": "180g",
+          "stock_key": "mango_pulp",
+          "qty": 180,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "150ml",
+          "stock_key": "milk",
+          "qty": 150,
+          "unit": "ml"
+        },
+        {
+          "item": "플레인 요거트 파우더",
+          "amount": "4스쿱",
+          "stock_key": "yogurt_powder",
+          "qty": 100,
+          "unit": "g"
+        },
+        {
+          "item": "얼음",
+          "amount": "80g",
+          "stock_key": "ice",
+          "qty": 80,
+          "unit": "g"
+        }
+      ],
+      "steps": [
+        "블렌더에 냉동 망고 180g과 얼음 80g을 넣는다",
+        "우유 150ml, 요거트 파우더 4스쿱을 넣는다",
+        "스무디 프로그램(약 35초)",
+        "컵에 따르고 체결"
+      ],
+      "consumes_stock": {
+        "mango_pulp": 180,
+        "milk": 150,
+        "yogurt_powder": 100,
+        "ice": 80
+      },
+      "quality_note": "딸기 스무디와 동일한 홀드 제약 적용",
+      "unattended_window_sec": 35,
+      "batch_blocker": "딸기 스무디와 연속 제조 시 용기 린스 필요(과육 색·향 전이)"
+    },
+    {
+      "id": "choco_chip_frappe",
+      "name_kr": "초코칩 프라페",
+      "name_en": "Choco Chip Frappe",
+      "category": "blended",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "BLENDED",
+      "price_krw": 6800,
+      "complexity_tier": 3,
+      "equipment_required": [
+        "blender"
+      ],
+      "allergens": [
+        "milk",
+        "soy"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "whipped_add",
+        "whipped_none",
+        "syrup_less",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "초콜릿 소스",
+          "amount": "35ml",
+          "stock_key": "choco_sauce",
+          "qty": 35,
+          "unit": "ml"
+        },
+        {
+          "item": "초코칩",
+          "amount": "40g",
+          "stock_key": "choco_chip",
+          "qty": 40,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "180ml",
+          "stock_key": "milk",
+          "qty": 180,
+          "unit": "ml"
+        },
+        {
+          "item": "얼음",
+          "amount": "160g",
+          "stock_key": "ice",
+          "qty": 160,
+          "unit": "g"
+        },
+        {
+          "item": "휘핑크림",
+          "amount": "1회분",
+          "stock_key": "whipping_cream",
+          "qty": 1,
+          "unit": "serving"
+        }
+      ],
+      "steps": [
+        "블렌더에 초콜릿 소스 35ml, 초코칩 40g, 우유 180ml, 얼음 160g을 넣는다",
+        "프라페 프로그램(약 35초)",
+        "컵에 따르고 휘핑크림을 올린다",
+        "초콜릿 소스를 드리즐"
+      ],
+      "consumes_stock": {
+        "choco_sauce": 35,
+        "choco_chip": 40,
+        "milk": 180,
+        "ice": 160,
+        "whipping_cream": 1
+      },
+      "quality_note": "휘핑이 무너지므로 완성 후 즉시 제공",
+      "unattended_window_sec": 35
+    },
+    {
+      "id": "green_tea_frappe",
+      "name_kr": "그린티 프라페",
+      "name_en": "Green Tea Frappe",
+      "category": "blended",
+      "base_size": "R",
+      "available_sizes": [
+        "R",
+        "L"
+      ],
+      "temperature": "BLENDED",
+      "price_krw": 6800,
+      "complexity_tier": 3,
+      "equipment_required": [
+        "blender"
+      ],
+      "allergens": [
+        "milk"
+      ],
+      "is_mvp_menu": false,
+      "available_options": [
+        "milk_oat",
+        "milk_low_fat",
+        "whipped_add",
+        "whipped_none",
+        "syrup_less",
+        "no_straw"
+      ],
+      "ingredients": [
+        {
+          "item": "그린티 파우더",
+          "amount": "2스쿱",
+          "stock_key": "matcha_powder",
+          "qty": 50,
+          "unit": "g"
+        },
+        {
+          "item": "우유",
+          "amount": "190ml",
+          "stock_key": "milk",
+          "qty": 190,
+          "unit": "ml"
+        },
+        {
+          "item": "얼음",
+          "amount": "160g",
+          "stock_key": "ice",
+          "qty": 160,
+          "unit": "g"
+        },
+        {
+          "item": "휘핑크림",
+          "amount": "1회분",
+          "stock_key": "whipping_cream",
+          "qty": 1,
+          "unit": "serving"
+        }
+      ],
+      "steps": [
+        "블렌더에 그린티 파우더 2스쿱, 우유 190ml, 얼음 160g을 넣는다",
+        "프라페 프로그램(약 35초)",
+        "컵에 따르고 휘핑크림을 올린 뒤 파우더를 가볍게 뿌린다"
+      ],
+      "consumes_stock": {
+        "matcha_powder": 50,
+        "milk": 190,
+        "ice": 160,
+        "whipping_cream": 1
+      },
+      "quality_note": null,
+      "unattended_window_sec": 35
+    }
+  ],
+  "food": [
+    {
+      "id": "butter_croissant",
+      "name_kr": "버터 크루아상",
+      "name_en": "Butter Croissant",
+      "category": "bakery",
+      "price_krw": 4000,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "oven"
+      ],
+      "allergens": [
+        "milk",
+        "wheat",
+        "egg"
+      ],
+      "heat_sec": 90,
+      "steps": [
+        "쇼케이스에서 꺼낸다",
+        "오븐 워밍 90초",
+        "종이백에 담아 전달"
+      ],
+      "consumes_stock": {},
+      "quality_note": "식으면 바삭함이 떨어진다. 워밍 후 3분 내 전달"
+    },
+    {
+      "id": "plain_scone",
+      "name_kr": "플레인 스콘",
+      "name_en": "Plain Scone",
+      "category": "bakery",
+      "price_krw": 3800,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "oven"
+      ],
+      "allergens": [
+        "milk",
+        "wheat",
+        "egg"
+      ],
+      "heat_sec": 60,
+      "steps": [
+        "쇼케이스에서 꺼낸다",
+        "오븐 워밍 60초",
+        "잼·버터를 곁들여 접시에 담는다"
+      ],
+      "consumes_stock": {},
+      "quality_note": null
+    },
+    {
+      "id": "cream_cheese_bagel",
+      "name_kr": "크림치즈 베이글",
+      "name_en": "Cream Cheese Bagel",
+      "category": "bakery",
+      "price_krw": 4800,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "oven",
+        "refrigerator"
+      ],
+      "allergens": [
+        "milk",
+        "wheat"
+      ],
+      "heat_sec": 70,
+      "steps": [
+        "베이글을 반으로 가른다",
+        "오븐 워밍 70초",
+        "크림치즈를 펴 바른다",
+        "종이 트레이에 담는다"
+      ],
+      "consumes_stock": {},
+      "quality_note": "크림치즈는 워밍 후에 바른다. 먼저 바르면 녹아 흐른다",
+      "attended": true
+    },
+    {
+      "id": "ham_cheese_panini",
+      "name_kr": "햄치즈 파니니",
+      "name_en": "Ham & Cheese Panini",
+      "category": "bakery",
+      "price_krw": 6500,
+      "complexity_tier": 2,
+      "equipment_required": [
+        "panini_grill",
+        "refrigerator"
+      ],
+      "allergens": [
+        "milk",
+        "wheat",
+        "egg"
+      ],
+      "heat_sec": 180,
+      "steps": [
+        "냉장고에서 파니니를 꺼낸다",
+        "그릴에 올리고 180초 프레스",
+        "대각선으로 반 자른다",
+        "종이 트레이에 담아 전달"
+      ],
+      "consumes_stock": {},
+      "quality_note": "가열 시간이 가장 길다. 음료와 동시 주문 시 파니니를 먼저 시작",
+      "unattended_window_sec": 180,
+      "note": "그릴이 자동으로 눌러주므로 180초 동안 바리스타는 자유롭다 — 음료 제조와 병렬 가능"
+    },
+    {
+      "id": "tiramisu",
+      "name_kr": "티라미수",
+      "name_en": "Tiramisu",
+      "category": "dessert",
+      "price_krw": 6800,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "refrigerator"
+      ],
+      "allergens": [
+        "milk",
+        "wheat",
+        "egg"
+      ],
+      "heat_sec": 0,
+      "steps": [
+        "냉장 쇼케이스에서 꺼낸다",
+        "접시에 담고 포크를 함께 전달"
+      ],
+      "consumes_stock": {},
+      "quality_note": "가열 불필요. 실온 방치 시 크림이 무른다",
+      "delivery_suitable": false
+    },
+    {
+      "id": "choco_chunk_cookie",
+      "name_kr": "초코청크 쿠키",
+      "name_en": "Choco Chunk Cookie",
+      "category": "dessert",
+      "price_krw": 3500,
+      "complexity_tier": 1,
+      "equipment_required": [
+        "oven"
+      ],
+      "allergens": [
+        "milk",
+        "wheat",
+        "egg",
+        "soy"
+      ],
+      "heat_sec": 40,
+      "steps": [
+        "쇼케이스에서 꺼낸다",
+        "오븐 워밍 40초",
+        "접시에 담아 전달"
+      ],
+      "consumes_stock": {},
+      "quality_note": "초코가 녹은 상태가 포인트. 워밍 후 즉시 전달"
+    }
+  ],
+  "mvp_menus": {
+    "note": "해커톤 MVP가 실제로 쓰는 3종. 전부 drinks[] 안의 정식 항목이며 is_mvp_menu=true로도 표시된다. cafe_db.json의 menus[x].recipe_ref가 이 id를 가리킨다.",
+    "ids": [
+      "iced_americano",
+      "latte",
+      "strawberry_smoothie"
+    ],
+    "rationale": "장비 경합이 서로 다르게 걸리는 3종 — 머신만(아아) / 머신+스팀 동기화(라떼) / 블렌더 독점(스무디). 하나라도 빼면 스케줄링 문제가 단순해진다."
+  },
+  "derived_indexes": {
+    "note": "코드가 부팅 시 만들어도 되지만, 자주 쓰는 조회라 미리 적어둔다.",
+    "by_equipment": {
+      "espresso_machine": [
+        "iced_americano",
+        "hot_americano",
+        "latte",
+        "iced_latte",
+        "cappuccino",
+        "vanilla_latte_ice",
+        "caramel_macchiato_ice",
+        "cafe_mocha_ice"
+      ],
+      "steam_wand": [
+        "latte",
+        "cappuccino"
+      ],
+      "blender": [
+        "strawberry_smoothie",
+        "mango_smoothie",
+        "choco_chip_frappe",
+        "green_tea_frappe"
+      ],
+      "oven": [
+        "butter_croissant",
+        "plain_scone",
+        "cream_cheese_bagel",
+        "choco_chunk_cookie"
+      ],
+      "panini_grill": [
+        "ham_cheese_panini"
+      ],
+      "none_contended": [
+        "cold_brew",
+        "green_tea_latte_ice",
+        "chocolate_latte_ice",
+        "strawberry_latte_ice",
+        "peach_iced_tea",
+        "lemon_ade",
+        "grapefruit_ade"
+      ]
+    },
+    "delivery_unsuitable": [
+      "tiramisu"
+    ],
+    "quality_hold_required": [
+      "hot_americano",
+      "latte",
+      "cappuccino",
+      "caramel_macchiato_ice",
+      "cafe_mocha_ice",
+      "green_tea_latte_ice",
+      "strawberry_latte_ice",
+      "lemon_ade",
+      "strawberry_smoothie",
+      "mango_smoothie",
+      "choco_chip_frappe",
+      "butter_croissant",
+      "cream_cheese_bagel",
+      "ham_cheese_panini",
+      "tiramisu",
+      "choco_chunk_cookie"
+    ],
+    "shares_strawberry_stock": [
+      "strawberry_smoothie",
+      "strawberry_latte_ice"
+    ],
+    "unattended_parallelizable": [
+      "strawberry_smoothie",
+      "mango_smoothie",
+      "choco_chip_frappe",
+      "green_tea_frappe",
+      "ham_cheese_panini"
+    ]
+  }
+}
