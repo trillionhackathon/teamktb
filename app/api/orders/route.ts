@@ -27,6 +27,7 @@ export async function POST(request: Request) {
       options: Array.isArray(item.options) ? item.options.filter((option): option is string => typeof option === 'string') : undefined,
     })),
     request_note: body.request_note as string | undefined,
+    rider_note: body.rider_note as string | undefined,
   });
   if ('error' in result) return errorResponse(result);
   return Response.json(result, { status: result.duplicate ? 200 : 201 });

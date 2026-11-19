@@ -1,7 +1,12 @@
-import type { BoardReview, MenuGroup, Note, Channel, Decision, OrderSource, OrderStatus, QuickLane, RiderStatus, Signals, Slot4Info, StoreEvent, Tip, WorkStep } from './types.ts';
+import type { BoardReview, MenuGroup, Note, NoteRead, NoteSentence, Channel, Decision, OrderSource, OrderStatus, QuickLane, RiderStatus, Signals, Slot4Info, StoreEvent, Tip, WorkStep } from './types.ts';
 
 // 서버가 화면으로 보내는 스냅샷. 화면은 메뉴 원본(recipe.json) 없이 이 값만으로 그린다.
-export type OrderItemView = { name: string; qty: number; unit: string; options: string[]; group?: MenuGroup; made?: boolean };
+// note_options: options 중 요청사항 메모를 읽고 붙인 것(이름)
+export type OrderItemView = { name: string; qty: number; unit: string; options: string[]; note_options?: string[]; group?: MenuGroup; made?: boolean };
+
+// 요청사항 문장마다 Zoro가 읽은 결과와 카드에 한 일. label은 카드 한 줄("메모 반영: 1잔 디카페인", 원문).
+export type NoteSentenceView = NoteSentence & { label: string; option_name?: string };
+export type NoteView = { status: NoteRead['status']; sentences: NoteSentenceView[] };
 
 export type OrderView = {
   order_id: string;
@@ -12,6 +17,8 @@ export type OrderView = {
   status: OrderStatus;
   items: OrderItemView[];
   request_note?: string;
+  rider_note?: string;
+  note_read?: NoteView;
   rider_status?: RiderStatus;
   rider_label?: string;
   pickup_eta_seconds?: number | null;

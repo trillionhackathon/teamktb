@@ -8,7 +8,7 @@ import {
   lineName, lineUsesEquipment, maxOrderCups, normalizeLine, optionNames, orderPrice, orderWorkSeconds, stockNeeded, type MenuCatalog,
 } from '../domain/menu.ts';
 import {
-  apartText, blockingReason, buildGroupRequest, groupViews, handsSeconds, headNote, idleWindow, isQuickDessert, lineUnit, quickLaneText, taskPalette, zoroText,
+  apartText, blockingReason, splitApartText, buildGroupRequest, groupViews, handsSeconds, headNote, idleWindow, isQuickDessert, lineUnit, quickLaneText, taskPalette, zoroText,
 } from '../domain/review.ts';
 import { defaultScenarioId, findScenario, scenarios, type SignalPatch } from '../domain/scenarios.ts';
 import type {
@@ -19,6 +19,7 @@ import type {
 } from '../domain/types.ts';
 import { channelLabels, riderLabels, sourceLabels, type BoardSnapshot, type OrderView } from '../domain/views.ts';
 import { buildWorkWindow } from '../domain/work-window.ts';
+import { applyNoteAnswers, noteHoldReason, noteLabel, noteRequest, noteSentences, plainSentences, removeNoteOption, unreadSentences } from '../domain/note.ts';
 import type { AiClient } from './aiserver.ts';
 
 // 주문·보드·매장 상태의 단일 저장소. 키오스크·배달·대시보드는 모두 이 저장소를 API로 바꾸고, 바뀔 때마다 스냅샷을 구독자에게 보낸다.
@@ -40,6 +41,8 @@ export type CreateOrderInput = {
   source: OrderSource;
   menu_items: MenuItemInput[];
   request_note?: string;
+  // 배달(라이더) 요청사항 칸. 손님이 여기에 가게 요청을 적기도 해서 같이 읽는다.
+  rider_note?: string;
 };
 
 export type StoreError = { error: string; status: 400 | 404 | 409 };
@@ -88,6 +91,8 @@ export class OrderStore {
   private decideTimer: ReturnType<typeof setTimeout> | undefined;
   private pending: Promise<void> = Promise.resolve();
   private pickPending: Promise<void> = Promise.resolve();
+  // 요청사항 읽기(/ai/read-note). 주문마다 한 번, 주문 접수를 막지 않고 뒤에서 읽는다.
+  private notePending: Promise<void> = Promise.resolve();
   // 4번 고르기 순번. 기다리는 사이 또 완료되면 늦게 온 Zoro 답을 버린다.
   private pickSeq = 0;
   // Zoro 보드 검토. 주문 구성이 바뀔 때만 다시 부른다(reviewKey). 늦게 온 답은 순번으로 버린다.
@@ -118,7 +123,7 @@ export class OrderStore {
   async settle(): Promise<void> {
     do {
       while (this.decideTimer !== undefined || this.reviewTimer !== undefined) await new Promise((resolve) => setTimeout(resolve, 5));
-      await Promise.all([this.pending, this.pickPending, this.reviewPending]);
+      await Promise.all([this.pending, this.pickPending, this.reviewPending, this.notePending]);
     } while (this.decideTimer !== undefined || this.reviewTimer !== undefined);
   }
 
@@ -179,7 +184,7 @@ export class OrderStore {
     if (this.state.scenarioId !== scenarioId) return { error: '먼저 이 시나리오를 불러와 주세요.', status: 409 };
     const eventId = `${scenarioId}-${index}`;
     if (trigger.kind === 'order') {
-      const result = this.createOrder({ request_id: eventId, channel: trigger.channel, source: 'scenario', menu_items: trigger.menu_items });
+      const result = this.createOrder({ request_id: eventId, channel: trigger.channel, source: 'scenario', menu_items: trigger.menu_items, request_note: trigger.request_note, rider_note: trigger.rider_note });
       return 'error' in result ? result : undefined;
     }
     if (trigger.kind === 'signal') {
@@ -201,6 +206,7 @@ export class OrderStore {
     if (!sources.includes(input.source)) return { error: `source는 ${sources.join(', ')} 중 하나여야 해요.`, status: 400 };
     if (!Array.isArray(input.menu_items) || input.menu_items.length === 0 || input.menu_items.length > 20) return { error: 'menu_items는 1~20개여야 해요.', status: 400 };
     if (input.request_note !== undefined && (typeof input.request_note !== 'string' || input.request_note.length > 200)) return { error: '요청사항은 200자 이하여야 해요.', status: 400 };
+    if (input.rider_note !== undefined && (typeof input.rider_note !== 'string' || input.rider_note.length > 200)) return { error: '배달 요청사항은 200자 이하여야 해요.', status: 400 };
 
     const lines: OrderLine[] = [];
     for (const item of input.menu_items) {
@@ -228,6 +234,7 @@ export class OrderStore {
       received_at: new Date(this.now()).toISOString(),
       status: 'waiting',
       request_note: input.request_note?.trim() || undefined,
+      rider_note: input.rider_note?.trim() || undefined,
       rider_status: input.channel === 'delivery' ? 'not_dispatched' : undefined,
       pickup_eta_seconds: input.channel === 'delivery' ? null : undefined,
       remaining_work_seconds: orderWorkSeconds(this.deps.catalog, lines),
@@ -242,6 +249,7 @@ export class OrderStore {
     if (input.request_id) this.state.requestIds.set(input.request_id, orderId);
     inventory.coffee_beans_shots_left -= needed.espresso_shot;
     inventory.strawberry_servings_left = Math.round((inventory.strawberry_servings_left - needed.strawberry_servings) * 100) / 100;
+    this.startNoteReading(order);
     this.commit();
     return { order: this.view(order), wait_seconds: this.etas(this.now()).get(orderId) ?? 0, duplicate: false };
   }
@@ -655,8 +663,19 @@ export class OrderStore {
       source: order.source,
       source_label: sourceLabels[order.source],
       status: order.status,
-      items: order.menu_items.map((line, index) => ({ name: lineName(catalog, line), qty: line.qty, unit: lineUnit(catalog, line), options: optionNames(catalog, line.options), group: findDrink(catalog, line.menu)?.group, made: order.made || order.completed_lines?.includes(index) || false })),
+      items: order.menu_items.map((line, index) => ({
+        name: lineName(catalog, line), qty: line.qty, unit: lineUnit(catalog, line), options: optionNames(catalog, line.options),
+        note_options: optionNames(catalog, line.note_options ?? []), group: findDrink(catalog, line.menu)?.group,
+        made: order.made || order.completed_lines?.includes(index) || false,
+      })),
       request_note: order.request_note,
+      rider_note: order.rider_note,
+      note_read: order.note_read && {
+        status: order.note_read.status,
+        sentences: order.note_read.sentences.map((sentence) => ({
+          ...sentence, label: noteLabel(sentence, catalog), option_name: sentence.option ? catalog.options[sentence.option]?.name_kr : undefined,
+        })),
+      },
       rider_status: order.rider_status,
       rider_label: order.rider_status ? riderLabels[order.rider_status] : undefined,
       pickup_eta_seconds: order.pickup_eta_seconds,
@@ -754,19 +773,24 @@ export class OrderStore {
   private anchorId(): string | undefined {
     return this.topIds().find((id) => {
       const order = this.state.orders.get(id)!;
-      return !order.made && !this.isBlocked(order);
+      return !order.made && !this.isBlocked(order) && !noteHoldReason(order);
     });
   }
 
+  // 맨 앞 4건, 기준 주문, 그리고 각 주문의 옵션과 메모 보류 여부. 메모로 옵션이 붙거나 확인되면 다시 묻는다.
   private reviewKey(): string {
-    return `${this.anchorId() ?? '-'}|${this.topIds().join(',')}`;
+    const content = this.topIds().map((id) => {
+      const order = this.state.orders.get(id)!;
+      return `${id}:${order.menu_items.map((line) => `${line.menu}*${line.qty}+${line.options.join('+')}`).join('/')}${noteHoldReason(order) ? ':hold' : ''}`;
+    });
+    return `${this.anchorId() ?? '-'}|${content.join(',')}`;
   }
 
   // 1번 기준과 2~4번 중 같이 만들 수 있는 후보(만듦·보류·디카페인 같은 옵션 막힘은 코드가 먼저 뺀다)
   private reviewCandidates(anchor: string): string[] {
     return this.topIds().filter((id) => {
       const order = this.state.orders.get(id)!;
-      return id === anchor || (!order.made && !this.isBlocked(order));
+      return id === anchor || (!order.made && !this.isBlocked(order) && !noteHoldReason(order));
     });
   }
 
@@ -826,7 +850,7 @@ export class OrderStore {
       if (id === anchor) continue;
       const order = this.state.orders.get(id)!;
       const blocked = this.blockedReason(order)?.replace(/으로 보류$/, '이라');   // "블렌더 고장으로 보류" → "블렌더 고장이라"
-      const why = order.made ? undefined : blocked ?? blockingReason(order, this.deps.catalog);
+      const why = order.made ? undefined : blocked ?? noteHoldReason(order) ?? blockingReason(order, this.deps.catalog);
       if (why) excluded[id] = why;
     }
     return excluded;
@@ -857,7 +881,10 @@ export class OrderStore {
         id: `head:${headId}`,
         kind: 'head',
         ...headNote(head, anchor, companions, this.state.orders, catalog, review.status),
-        reason: apartText(review.scores, review.excluded, review.threshold, this.state.orders, catalog),
+        reason: [
+          apartText(review.scores, review.excluded, review.threshold, this.state.orders, catalog),
+          anchor ? splitApartText([anchor, ...companions], this.state.orders, catalog) : undefined,
+        ].filter(Boolean).join(' ') || undefined,
         zoro: zoroText(anchor, review.scores, review.threshold),
         order_ids: [headId, ...(anchor && anchor !== headId ? [anchor] : []), ...companions],
         color: anchor ? review.groups[anchor]?.color : undefined,
@@ -909,7 +936,7 @@ export class OrderStore {
     if (!config.fifo || !config.quickLane) return undefined;
     return this.state.board.slice(config.lockedCount).find((id) => {
       const order = this.state.orders.get(id)!;
-      return isQuickDessert(order, this.deps.catalog) && !this.isBlocked(order);
+      return isQuickDessert(order, this.deps.catalog) && !this.isBlocked(order) && !noteHoldReason(order);
     });
   }
 
@@ -956,6 +983,68 @@ export class OrderStore {
     this.state.quickServed = [{ order_id: id, text, at: new Date(this.now()).toISOString() }, ...this.state.quickServed].slice(0, 3);
     const result = this.updateOrderStatus(id, 'complete');
     return 'error' in result ? result : { ok: true };
+  }
+
+  // ---- 배달 요청사항 읽기 ----
+
+  // 주문이 들어오면 두 칸(가게·배달) 메모를 문장으로 나눠 Zoro에 한 번 묻는다. 답이 올 때까지 이 주문은 1번과 같이 만들지 않는다.
+  // AI 서버가 없으면 예전처럼 메모 원문만 보여 준다.
+  private startNoteReading(order: Order): void {
+    const sentences = noteSentences(order.request_note, order.rider_note);
+    if (!sentences.length) return;
+    const ai = this.deps.ai;
+    if (!ai) {
+      order.note_read = { status: 'off', sentences: plainSentences(sentences) };
+      return;
+    }
+    order.note_read = { status: 'checking', sentences };
+    const reading = this.readNote(ai, order);
+    this.notePending = Promise.all([this.notePending, reading]).then(() => undefined);
+  }
+
+  // 판단 1(카드에 반영할까)은 domain/note.ts가 Zoro 확신에 기준선을 대서 정한다. 반영되면 commit에서 1번 묶기를 다시 묻는다(reviewKey).
+  private async readNote(ai: AiClient, order: Order): Promise<void> {
+    const note = order.note_read!;
+    const result = await ai.readNote(noteRequest(order, note.sentences, this.deps.catalog));
+    // 기다리는 사이 시나리오를 다시 불러왔으면 같은 번호의 다른 주문이다
+    if (this.state.orders.get(order.order_id) !== order || order.note_read !== note) return;
+    if (!result.ok || result.data.fallback) {
+      if (!result.ok) console.warn(`[order-store] read-note failed: ${result.error}`);
+      order.note_read = { status: 'unavailable', sentences: unreadSentences(note.sentences) };
+    } else if (order.made || order.completed_lines?.length || order.status === 'done') {
+      // 답이 오기 전에 이미 만든 잔이 있으면 줄을 나누지 않는다(완료한 줄 번호가 밀린다). 원문 + ⚠로 사람이 본다.
+      order.note_read = { status: 'unavailable', sentences: unreadSentences(note.sentences, '이미 만들기 시작해서 메모를 직접 확인하세요') };
+    } else {
+      const read = applyNoteAnswers(order, note.sentences, result.data.sentences, this.deps.catalog);
+      order.note_read = { status: 'ready', sentences: read.sentences };
+      this.setLines(order, read.lines);
+    }
+    this.commit({ decide: false });
+  }
+
+  // 메모로 옵션이 바뀌면 시작 전 주문의 남은 일을 다시 센다. 주문 금액은 그대로 둔다(돈 드는 옵션은 결제 확인 ⚠).
+  private setLines(order: Order, lines: OrderLine[]): void {
+    order.menu_items = lines;
+    if (order.status === 'waiting') order.remaining_work_seconds = orderWorkSeconds(this.deps.catalog, lines);
+  }
+
+  // 알바가 메모 ⚠를 처리한다. confirm: 확인했어요(보류를 풀어 1번과 같이 만들 수 있게 된다), revert: 메모로 붙인 옵션을 되돌린다.
+  resolveNote(orderId: string, sentenceId: string, decision: 'confirm' | 'revert'): { order: OrderView } | StoreError {
+    const order = this.state.orders.get(orderId);
+    if (!order) return { error: `${orderId} 주문이 없어요.`, status: 404 };
+    const sentence = order.note_read?.sentences.find(({ id }) => id === sentenceId);
+    if (!sentence) return { error: `${orderId}에 ${sentenceId} 메모 문장이 없어요.`, status: 404 };
+    if (order.status === 'done') return { error: `${orderId}은(는) 이미 완료된 주문이에요.`, status: 409 };
+    if (decision === 'revert') {
+      if (!sentence.applied || !sentence.option) return { error: '메모로 붙인 옵션이 없어서 되돌릴 게 없어요.', status: 409 };
+      // 나눈 줄을 다시 합치면 완료한 줄 번호(completed_lines)가 밀린다. 이미 만든 잔이 있으면 되돌리지 않는다.
+      if (order.made || order.completed_lines?.length) return { error: '이미 만든 잔이 있어서 되돌릴 수 없어요.', status: 409 };
+      this.setLines(order, removeNoteOption(order.menu_items, sentence.option));
+      Object.assign(sentence, { applied: false, cups: undefined, check: undefined });
+    }
+    Object.assign(sentence, { resolved: true, hold: false });
+    this.commit({ decide: false });
+    return { order: this.view(order) };
   }
 
   private async classify(event: StoreEvent): Promise<void> {

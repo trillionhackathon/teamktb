@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
-import { parseDecideResult, parseIntentResult, parsePickResult, parseGroupResult, toAiRiderStatus, toAiStoreState, toPickRequest, type AiPickRequest } from '../app/ai/contract.ts';
+import { parseDecideResult, parseIntentResult, parsePickResult, parseGroupResult, parseNoteResult, toAiRiderStatus, toAiStoreState, toPickRequest, type AiPickRequest } from '../app/ai/contract.ts';
 import { moveReasonLabels } from '../app/domain/board.ts';
 import { boardConfig, menuCatalog, ownerRules } from '../app/domain/catalog-data.ts';
 import type { Fact } from '../app/domain/facts.ts';
@@ -220,5 +220,13 @@ describe('group contract', () => {
     assert.equal(parseGroupResult({ groups: {}, fallback: 'no' }), undefined);
     assert.equal(parseGroupResult({ groups: {}, scores: { '#102': 1.4 } }), undefined, 'scores are probabilities');
     assert.equal(parseGroupResult({ matched_menus: { '#102': [42] } }), undefined);
+  });
+
+  it('accepts /ai/read-note answers only as probabilities per sentence', () => {
+    const answer = { id: 's1', kind: { recipe: 0.9, other: 0.1 }, option: { decaf: 0.8, none: 0.2 }, partial: 0.93, body: 0.02 };
+    assert.deepEqual(parseNoteResult({ sentences: [answer], fallback: false }), { sentences: [answer], fallback: false });
+    assert.deepEqual(parseNoteResult({ fallback: true }), { sentences: [], fallback: true });
+    assert.equal(parseNoteResult({ sentences: [{ ...answer, partial: 1.2 }] }), undefined);
+    assert.equal(parseNoteResult({ sentences: [{ ...answer, kind: 'recipe' }] }), undefined);
   });
 });

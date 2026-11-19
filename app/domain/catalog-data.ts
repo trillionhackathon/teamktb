@@ -61,6 +61,7 @@ function toDrink(drink: RecipeDrink): MenuDrink {
     complexity_tier: drink.complexity_tier,
     equipment: drink.equipment_required,
     steps: drink.steps,
+    allergens: drink.allergens,
     first_cup_sec: reference.first_cup_sec,
     additional_cup_sec: reference.additional_cup_sec,
     timing_basis: measured && measured.basis !== 'estimate' ? 'measured' : 'tier_estimate',

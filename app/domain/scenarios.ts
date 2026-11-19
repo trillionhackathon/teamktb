@@ -12,7 +12,7 @@ export type SignalPatch = {
 export type ScenarioTrigger =
   | { label: string; kind: 'event'; raw_text: string; order_id?: string; category?: EventCategory; signal?: SignalPatch }
   | { label: string; kind: 'signal'; signal: SignalPatch }
-  | { label: string; kind: 'order'; channel: Channel; menu_items: MenuItemInput[] };
+  | { label: string; kind: 'order'; channel: Channel; menu_items: MenuItemInput[]; request_note?: string; rider_note?: string };
 
 export type Scenario = {
   id: string;
@@ -207,6 +207,19 @@ export const scenarios: Scenario[] = [
       { order_id: '#110', channel: 'takeout', menu_items: [{ menu: 'tiramisu', qty: 1 }], waiting_seconds: 60 },
     ],
     triggers: [{ label: '포장 초코 아이스크림 1개 접수', kind: 'order', channel: 'takeout', menu_items: [{ menu: 'ice_cream_choco', qty: 1 }] }],
+  },
+  {
+    id: 'SC-N',
+    title: '배달 요청사항 읽기 (가게 칸 + 배달 칸)',
+    source: '시연용',
+    description: '1번은 매장 카페 라떼 1잔이다. 배달 주문 세 건의 메모를 Zoro가 문장마다 읽고, 확신만큼 카드에 반영한다. #102는 배달 칸에 숨은 "한 잔은 디카페인"을 찾아 2잔 중 1잔만 디카페인으로 나누고 그 잔만 따로 만든다. #103은 "연하게"를 1잔에 붙이고 빨대는 포장 옵션으로 붙인다. 가게 칸에 적힌 "노크하지 말고 문 앞에"는 가게 일이 아니라 메모 한 줄로 둔다. #104는 심부름과 취소 조건이라 만들기 전에 확인하도록 묶기에서 뺀다.',
+    expected: '#102: "배달 칸 메모 반영: 1잔 디카페인"과 결제 확인 ⚠. 아래 팁: #101과 #102 1잔 같이, 디카페인 1잔은 따로. #103: 연하게 1잔과 빨대 빼기 반영, 노크 문장은 메모. #104: ⚠ 만들기 전에 확인, 1번과 따로.',
+    orders: [{ order_id: '#101', channel: 'dine-in', menu_items: [{ menu: 'latte', qty: 1 }], waiting_seconds: 60 }],
+    triggers: [
+      { label: '#102 배달 라떼 2잔 (배달 칸에 "한 잔은 디카페인")', kind: 'order', channel: 'delivery', menu_items: [{ menu: 'latte', qty: 2 }], rider_note: '문 앞에 두세요. 한 잔은 디카페인으로요' },
+      { label: '#103 배달 아아 2잔 (가게 칸에 "연하게", "빨대 빼", "노크 X")', kind: 'order', channel: 'delivery', menu_items: [{ menu: 'iced_americano', qty: 2 }], request_note: '하나는 연하게요. 빨대는 빼주세요. 노크하지 말고 문 앞에 두세요' },
+      { label: '#104 배달 딸기 스무디 (담배 심부름, 안 되면 취소)', kind: 'order', channel: 'delivery', menu_items: [{ menu: 'strawberry_smoothie', qty: 1 }], request_note: '오시는 길에 편의점에서 담배 하나만 사다주세요. 안 되면 취소할게요' },
+    ],
   },
   {
     id: 'empty',

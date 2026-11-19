@@ -9,7 +9,33 @@ export type DecisionSource = 'zoro' | 'llm' | 'rule';
 
 export type MenuItemInput = { menu: string; qty: number; size?: SizeId; options?: string[] };
 
-export type OrderLine = { menu: string; qty: number; size: SizeId; options: string[] };
+// note_options: 요청사항 메모를 읽고 붙인 옵션(options 안에도 들어 있다). 결제한 옵션과 구분해 보여 주고 되돌릴 때 쓴다.
+export type OrderLine = { menu: string; qty: number; size: SizeId; options: string[]; note_options?: string[] };
+
+// ---- 배달 요청사항 읽기(/ai/read-note) ----
+// store: 가게 요청사항 칸, rider: 배달(라이더) 요청사항 칸. 손님이 배달 칸에 가게 요청을 적기도 해서 두 칸 다 읽는다.
+export type NoteField = 'store' | 'rider';
+// recipe: 만드는 법이 바뀜, packing: 포장, confirm: 확인 필요(취소·변경·메뉴 밖 부탁), delivery: 배달 기사 몫, other: 그 밖의 말.
+// delivery와 other는 둘 다 가게 일이 아니라 같은 행동을 한다(domain/note.ts가 확률을 더해 판단).
+export type NoteKind = 'recipe' | 'packing' | 'confirm' | 'delivery' | 'other';
+// 문장 하나를 읽은 결과와 카드에 한 일. Zoro는 뜻과 확신만 답하고, 반영·⚠·보류는 코드가 확신에 기준선을 대서 정한다(domain/note.ts).
+export type NoteSentence = {
+  id: string;
+  field: NoteField;
+  text: string;
+  kind?: NoteKind;
+  option?: string;        // Zoro가 고른 옵션 id(목록에 있을 때만)
+  confidence?: number;    // 반영 판단에 쓴 Zoro 확신(종류 확률과 옵션 확률 중 작은 값)
+  cups?: number;          // 옵션을 붙인 잔 수(반영했을 때만)
+  applied: boolean;       // 카드에 옵션을 붙였나
+  hidden: boolean;        // 카드에 띄우지 않음(배달 칸의 가게 일 아닌 문장)
+  check?: string;         // ⚠ 문구. 있으면 알바가 확인한다
+  hold: boolean;          // 확인될 때까지 1번과 같이 만들지 않음
+  moved: boolean;         // 배달 칸에 적힌 가게 일
+  resolved: boolean;      // 알바가 확인하거나 되돌림
+};
+// checking: Zoro가 읽는 중, ready: 읽음, unavailable: Zoro가 답하지 못함(원문 + ⚠), off: AI 서버 없음(원문만)
+export type NoteRead = { status: 'checking' | 'ready' | 'unavailable' | 'off'; sentences: NoteSentence[] };
 
 export type Order = {
   order_id: string;
@@ -21,6 +47,10 @@ export type Order = {
   started_at?: string;
   completed_at?: string;
   request_note?: string;
+  // 배달(라이더) 요청사항 칸
+  rider_note?: string;
+  // 두 칸 메모를 문장으로 나눠 Zoro가 읽은 결과
+  note_read?: NoteRead;
   rider_status?: RiderStatus;
   pickup_eta_seconds?: number | null;
   eta_confirmed?: boolean;

@@ -78,14 +78,38 @@ export function lineUnit(catalog: MenuCatalog, line: Pick<OrderLine, 'menu'>): s
 
 // "카페 라떼 2잔, 딸기 스무디 1잔". 같은 메뉴는 잔 수를 더한다.
 export function cupsText(ids: string[], orders: Map<string, Order>, catalog: MenuCatalog): string {
+  return linesText(ids.flatMap((id) => orders.get(id)?.menu_items ?? []), catalog);
+}
+
+function linesText(lines: OrderLine[], catalog: MenuCatalog): string {
   const cups = new Map<string, { qty: number; unit: string }>();
-  for (const id of ids) {
-    for (const line of orders.get(id)?.menu_items ?? []) {
-      const name = lineName(catalog, line);
-      cups.set(name, { qty: (cups.get(name)?.qty ?? 0) + line.qty, unit: lineUnit(catalog, line) });
-    }
+  for (const line of lines) {
+    const name = lineName(catalog, line);
+    cups.set(name, { qty: (cups.get(name)?.qty ?? 0) + line.qty, unit: lineUnit(catalog, line) });
   }
   return [...cups].map(([name, { qty, unit }]) => `${name} ${qty}${unit}`).join(', ');
+}
+
+const isBlockingLine = (line: OrderLine, catalog: MenuCatalog) => line.options.some((id) => catalog.options[id]?.batch_blocking);
+
+// 같이 만들 수 있는 잔만 센 이름. 2잔 중 1잔이 디카페인이면(요청사항으로 나뉜 줄) "#102 카페 라떼 1잔"
+function groupableName(id: string, orders: Map<string, Order>, catalog: MenuCatalog): string {
+  const lines = (orders.get(id)?.menu_items ?? []).filter((line) => !isBlockingLine(line, catalog));
+  return lines.length ? `${id} ${linesText(lines, catalog)}` : orderName(id, orders, catalog);
+}
+
+// 같이 만드는 주문 안에서 따로 만드는 잔과 이유. 예: "#102 카페 라떼 1잔은 디카페인이라 원두를 바꿔야 해서 따로 만들어요."
+// 주문 전체가 막힌 경우는 apartText(코드가 뺀 주문)가 쓴다.
+export function splitApartText(ids: string[], orders: Map<string, Order>, catalog: MenuCatalog): string | undefined {
+  const parts = ids.flatMap((id) => {
+    const lines = orders.get(id)?.menu_items ?? [];
+    const blocked = lines.filter((line) => isBlockingLine(line, catalog));
+    if (!blocked.length || blocked.length === lines.length) return [];
+    const option = blocked[0].options.find((optionId) => catalog.options[optionId]?.batch_blocking)!;
+    const name = `${id} ${linesText(blocked, catalog)}`;
+    return [`${name}${josa(name, ['은', '는'])} ${blockingWhy[option] ?? `${optionNames(catalog, [option]).join('')} 옵션이라`}`];
+  });
+  return parts.length ? `${parts.join(', ')} 따로 만들어요.` : undefined;
 }
 
 // 받침에 맞는 조사. pair는 [받침 있을 때, 없을 때]. 예: josa('1잔', ['을', '를']) → '을'
@@ -125,7 +149,7 @@ export function togetherReason(anchor: Order, other: Order, catalog: MenuCatalog
 function togetherLines(anchorId: string, companions: string[], orders: Map<string, Order>, catalog: MenuCatalog): { text: string; detail: string } {
   const anchor = orders.get(anchorId)!;
   const anchorName = orderName(anchorId, orders, catalog);
-  const names = companions.map((id) => orderName(id, orders, catalog));
+  const names = companions.map((id) => groupableName(id, orders, catalog));
   const together = joinNames(names);
   const reasons = companions.map((id) => togetherReason(anchor, orders.get(id)!, catalog));
   const detail = new Set(reasons).size === 1 ? reasons[0] : companions.map((id, index) => `${id}는 ${reasons[index].replace(/^둘 다 /, '')}`).join(' ');
