@@ -330,8 +330,8 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
    - KDS(일머리 보드): 프레임 안에 박힌 어두운 모니터 화면
    - 같이 만들 주문: 진한 분홍(anchorColor), 8번 빠른 주문 칸: 노랑, 주문 번호 칸: 약한 회색
    ===================================================================== */
+:root:has(.quest-layout) { color-scheme: dark; }
 :root {
-  color-scheme: dark;
   --frame: #2e3b4e;
   --frame-card: #3a4a62;
   --frame-line: #51627c;
@@ -344,10 +344,11 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
   --quick: #ffb92e;
   --pill: #566982;
 }
-body { background: var(--frame); color: var(--ink); }
+/* 스킨은 대시보드(.quest-layout이 있는 화면)에만 쓴다. 키오스크와 배달 화면은 원래 모양 그대로 둔다. */
+body:has(.quest-layout) { background: var(--frame); color: var(--ink); }
 
 /* 프레임: 맨 위 바, 왼쪽 마법사, 아래 팁 */
-.topbar, .agent-panel, .notice-section {
+.quest-topbar, .agent-panel, .notice-section {
   --surface: var(--frame-card);
   --soft: var(--frame-card);
   --line: var(--frame-line);
@@ -357,12 +358,12 @@ body { background: var(--frame); color: var(--ink); }
   --event-ink: #ff9d94;
   --event-surface: #4d303c;
 }
-.topbar { background: var(--frame); border-bottom: 0; }
-.topbar-link { color: #b9d6ff; }
-.feed-toggle, .scenario-control select, .secondary-button { background: var(--frame-card); border-color: var(--frame-line); color: var(--ink); }
-.feed-toggle:hover, .secondary-button:hover { background: #435673; }
-.feed-toggle.on { border-color: #45d483; background: #24503b; color: #b7f5d0; }
-.connection-live::before, .ai-status.ai-connected::before, .feed-toggle.on::before { background: #45d483; }
+.quest-topbar { background: var(--frame); border-bottom: 0; }
+.quest-topbar .topbar-link { color: #b9d6ff; }
+.quest-topbar .feed-toggle, .quest-topbar .scenario-control select, .quest-topbar .secondary-button { background: var(--frame-card); border-color: var(--frame-line); color: var(--ink); }
+.quest-topbar .feed-toggle:hover, .quest-topbar .secondary-button:hover { background: #435673; }
+.quest-topbar .feed-toggle.on { border-color: #45d483; background: #24503b; color: #b7f5d0; }
+.quest-topbar .connection-live::before, .quest-topbar .ai-status.ai-connected::before, .quest-topbar .feed-toggle.on::before { background: #45d483; }
 
 .quest-layout { height: calc(100dvh - 59px); min-height: 0; }
 .agent-panel { height: 100%; background: transparent; border-inline-end: 0; padding: 6px 12px 14px 18px; }
