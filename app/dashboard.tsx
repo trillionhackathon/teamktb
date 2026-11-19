@@ -296,6 +296,9 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const detail = selectedOrder && (snapshot.board.find(({ order_id: id }) => id === selectedOrder.order_id)
     ?? snapshot.history.find((order) => order.order_id === selectedOrder.order_id) ?? selectedOrder);
 
+  // 재고 "채웠어요"와 주문 완료가 성공할 때마다 올려서 마법사가 잠깐 웃게 한다.
+  const [cheer, setCheer] = useState(0);
+
   // 일하는 사람이 실제로 채운 뒤 누른다. 재고를 주문 단위만큼 늘리고, 처리된 알림은 대화에서 지운다.
   async function restock(itemId: string) {
     setBusy(true);
@@ -304,6 +307,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
     if (result.ok) {
       dismissItem(itemId);
       refreshAgent();
+      setCheer((count) => count + 1);
     }
     else setError(result.error);
   }
@@ -314,6 +318,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
     const result = await callApi(orderPath(order.order_id), { method: 'PATCH', body: { action: 'complete' } });
     setBusy(false);
     setError(result.ok ? null : result.error);
+    if (result.ok) setCheer((count) => count + 1);
   }
 
   async function completeTask(noteId: string) {
@@ -329,6 +334,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
     const result = await callApi('/api/notes', { body: { note_id: `quick:${orderId}` } });
     setBusy(false);
     setError(result.ok ? null : result.error);
+    if (result.ok) setCheer((count) => count + 1);
   }
 
   return (
@@ -361,7 +367,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
       <main className="quest-layout">
         <aside className="agent-panel" aria-labelledby="agent-title">
           <div className="agent-identity">
-            <WizardAvatar />
+            <WizardAvatar cheer={cheer} />
             <div>
               <h2 id="agent-title">일머리 마법사</h2>
               <p>재고와 주문 순서를 살펴보고 알려 줘요</p>
