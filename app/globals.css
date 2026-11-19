@@ -109,7 +109,6 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .agent-list { display: flex; flex: 0 0 auto; flex-direction: column; gap: 12px; min-height: 120px; max-height: min(452px, 40vh); margin: 0; padding: 4px 4px 4px 8px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
 .agent-list > li { flex-shrink: 0; }
 .agent-message.resolved { opacity: .5; }
-.agent-summary { flex-shrink: 0; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; background: #eef4fb; color: var(--text); font-size: 14px; font-weight: 600; line-height: 1.45; }
 .agent-message { position: relative; padding: 14px 15px; border-radius: 4px 15px 15px; background: var(--soft); overflow-wrap: anywhere; }
 .agent-message::before { position: absolute; inset: 0 auto auto -7px; width: 10px; height: 10px; background: inherit; clip-path: polygon(0 0, 100% 0, 100% 100%); content: ""; }
 .agent-message p { font-size: 16px; font-weight: 640; line-height: 1.5; }
@@ -117,15 +116,24 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .agent-message-meta strong { font-weight: 550; }
 .agent-message.level-warn .agent-message-meta { color: #8a5a00; }
 .agent-message.level-danger .agent-message-meta { color: var(--event-ink); }
+/* 재고 알림: 굵은 줄(무엇 · 얼마나 채울지) + 작은 줄(남은 양 · 급한 이유), 오른쪽에 채웠어요 버튼 */
+.stock-alert { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; }
+.stock-alert-body { flex: 1; min-width: 0; }
+.agent-message .stock-alert-title { font-size: 15px; line-height: 1.35; }
+.stock-alert-title strong { font-weight: 760; }
+.stock-alert-title span { margin-left: 6px; color: var(--muted); font-weight: 560; }
+.agent-message .stock-alert-status { margin-top: 2px; color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.4; }
+.agent-message.level-warn .stock-alert-status { color: #8a5a00; }
+.agent-message.level-danger .stock-alert-status { color: var(--event-ink); }
+.stock-alert .agent-action { flex-shrink: 0; margin-left: 0; }
 
 .quest-main { display: flex; flex-direction: column; min-width: 0; background: var(--surface); }
 .board-section, .tip-section { min-width: 0; padding: 22px clamp(16px, 2.3vw, 36px) 24px; }
 .tip-section { flex: 1; border-top: 1px solid var(--line); background: #f7f8fb; }
 .board-error { margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; background: var(--event-surface); color: var(--event-ink); font-size: 15px; font-weight: 650; }
 .row-label { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; font-size: 16px; font-weight: 720; }
-.row-label span { color: var(--muted); font-size: 14px; font-weight: 500; }
 .quest-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.quest-row + .row-label, .group-legend + .quest-row { margin-top: 0; }
+.quest-row + .row-label { margin-top: 0; }
 .quest-row + .row-label { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
 
 .quest-card { display: flex; flex-direction: column; min-width: 0; height: 212px; padding: 12px 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); transition: border-color .3s ease, box-shadow .3s ease, background-color .3s ease; }
@@ -270,17 +278,18 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .agent-action:disabled { color: var(--muted); }
 .stock-list { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 180px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .stock-list h3 { display: flex; flex-shrink: 0; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 15px; font-weight: 720; }
-.stock-list h3 span { color: var(--muted); font-size: 12px; font-weight: 500; }
 /* 재고 목록은 이 칸 안에서만 스크롤된다. */
 .stock-list ul { display: grid; flex: 1 1 auto; align-content: start; gap: 10px; min-height: 0; margin: 0; padding: 0 4px 4px 0; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
-.stock-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 4px 8px; padding: 8px 10px; border-radius: 10px; background: var(--soft); font-size: 14px; }
+.stock-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--soft); font-size: 14px; }
 .stock-row.status-ok { background: transparent; padding-block: 4px; }
 .stock-name { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .stock-status { padding: 0 6px; border-radius: 5px; background: #e4f4e9; color: #246140; font-size: 11px; font-weight: 720; white-space: nowrap; }
 .stock-amount { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 여유 재고 접기: 목록 맨 아래 한 줄짜리 버튼 */
+.stock-fold button { width: 100%; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 10px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 650; }
+.stock-fold button:hover { color: var(--text); }
 .stock-bar { grid-column: 1 / -1; height: 6px; overflow: hidden; border-radius: 999px; background: #e6e9ee; }
 .stock-bar > span { display: block; height: 100%; border-radius: inherit; background: #1f9d55; }
-.stock-note { display: flex; grid-column: 1 / -1; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .stock-row.level-warn .stock-bar > span, .stock-row.status-soon .stock-bar > span, .stock-row.status-board_danger .stock-bar > span { background: #e0a100; }
 .stock-row.level-danger .stock-bar > span, .stock-row.status-short .stock-bar > span { background: #d23c45; }
 .stock-row.status-warn .stock-status, .stock-row.status-soon .stock-status, .stock-row.status-board_danger .stock-status { background: #fff1c7; color: #8a5a00; }
@@ -288,10 +297,6 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .stock-row.status-short, .stock-row.status-danger { background: #fff6f6; }
 .stock-row.level-danger .stock-amount { color: var(--event-ink); font-weight: 680; }
 
-.stock-usage { display: flex; grid-column: 1 / -1; flex-wrap: wrap; gap: 2px 14px; margin: 0; font-size: 13px; }
-.stock-usage > div { display: flex; align-items: baseline; gap: 5px; }
-.stock-usage dt { color: var(--muted); font-size: 12px; }
-.stock-usage dd { margin: 0; font-weight: 680; font-variant-numeric: tabular-nums; }
 
 /* 비슷한 계열(Zoro가 레시피로 만든 data/menu_groups.json): 같은 계열은 같은 색 */
 .work-linked { border-left: 4px solid transparent; padding-left: 8px; }
@@ -300,10 +305,6 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 
 .card-wait .group-tag { margin-left: 8px; }
 .group-tag { padding: 1px 8px; border-radius: 999px; background: #e6e9ee; color: var(--text); font-size: 12px; font-weight: 740; white-space: nowrap; }
-.group-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
-.group-legend li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid; border-radius: 999px; background: var(--surface); font-size: 14px; font-weight: 700; }
-.group-legend li i { width: 10px; height: 10px; border-radius: 50%; }
-.group-legend li span { color: var(--muted); font-weight: 500; }
 
 /* 아래 일머리 팁: 장식 없이 문장과 작은 버튼만 둔다 */
 .notice-section { min-width: 0; padding: 18px clamp(16px, 2.3vw, 36px) 22px; background: #f7f8fb; }
@@ -311,11 +312,11 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .note-card { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .task-card { border-color: var(--task-color); box-shadow: inset 4px 0 var(--task-color); }
 .task-card.is-next { background: color-mix(in srgb, var(--task-color) 6%, var(--surface)); }
-.task-next { display: inline-block; margin-bottom: 6px; color: #247b47; font-size: 13px; font-weight: 800; }
 .task-card.is-done { background: #f2f5f2; }
-.task-parts { margin-top: 6px !important; font-weight: 650; }
+.task-parts { display: grid; gap: 4px; margin-top: 8px; font-weight: 650; }
+.task-parts p { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.task-parts-menu { margin-right: 2px; }
 .task-done { color: #247b47; font-weight: 750; }
-.note-status { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
 .note-body { flex: 1 1 320px; min-width: 0; }
 .note-card p { margin: 0; line-height: 1.55; }
 .note-card .note-text { font-size: 17px; font-weight: 700; }
@@ -387,8 +388,7 @@ body:has(.quest-layout) { background: var(--frame); color: var(--ink); }
 .quest-layout { height: calc(100dvh - 59px); min-height: 0; }
 .agent-panel { height: 100%; background: transparent; border-inline-end: 0; padding: 6px 12px 14px 18px; }
 .wizard-avatar:hover { background: transparent; }
-.agent-summary { background: #284460; color: #fff; }
-.agent-message.level-warn .agent-message-meta { color: #ffd27a; }
+.agent-message.level-warn .agent-message-meta, .agent-message.level-warn .stock-alert-status { color: #ffd27a; }
 .stock-row.status-ok { background: transparent; }
 .stock-row.status-short, .stock-row.status-danger { background: #4d303c; }
 .stock-status { background: #24503b; color: #8be8b0; }
@@ -460,8 +460,6 @@ body:has(.quest-layout) { background: var(--frame); color: var(--ink); }
 /* 같이 만들기 표시는 카드 전체가 아니라 메뉴 줄 단위: 그 줄이 들어간 일머리 팁 제조 블록 색으로 왼쪽 띠와 옅은 배경을 칠한다. */
 .board-section .group-tag { background: #2a3a4f; color: var(--ink); }
 .card-items li.in-task { margin-left: -6px; padding: 2px 4px 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--line-color) 16%, transparent); box-shadow: inset 4px 0 0 var(--line-color); }
-.board-section .group-legend li { background: transparent; box-shadow: none; }
-.board-section .group-legend li i { box-shadow: 0 0 8px currentColor; }
 
 /* 8번 빠른 주문 칸: 노랑 */
 .board-section .quest-card.quick-lane { border: 2px solid #8a6a1a; padding: 11px 13px; background: #231c0c; }
@@ -483,8 +481,7 @@ body:has(.quest-layout) { background: var(--frame); color: var(--ink); }
 /* 제조 작업 카드: 어두운 바탕에서도 상태가 한눈에 보이게. 밝은 화면용 값(연두 글씨, 흰 바탕)은 여기서 덮는다. */
 .notice-section .task-card { border-color: var(--task-color); box-shadow: inset 4px 0 var(--task-color); }
 .notice-section .task-card.is-next { background: color-mix(in srgb, var(--task-color) 16%, var(--frame-card)); }
-.notice-section .task-next { color: var(--task-color); }
-.notice-section .task-parts { margin-top: 4px !important; color: var(--ink); }
+.notice-section .task-parts { color: var(--ink); }
 /* 끝난 작업은 색을 빼서 남은 작업이 먼저 보이게 */
 .notice-section .task-card.is-done { border-color: var(--frame-line); background: #334156; box-shadow: none; opacity: .62; }
 .notice-section .task-card.is-done .note-text { text-decoration: line-through; }
