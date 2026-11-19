@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { parseDecideResult, parseIntentResult, toAiRiderStatus, toAiStoreState } from '../app/ai/contract.ts';
+import { parseDecideResult, parseIntentResult, parseQuestResult, toAiRiderStatus, toAiStoreState } from '../app/ai/contract.ts';
 import { moveReasonLabels } from '../app/domain/board.ts';
 import { boardConfig, menuCatalog } from '../app/domain/catalog-data.ts';
 import { createAiClient } from '../app/server/aiserver.ts';
@@ -101,5 +101,40 @@ describe('aiserver integration', { skip: !process.env.AISERVER_URL && 'AISERVER_
   it('classifies operator input', async () => {
     const result = await createAiClient(baseUrl).classify('108번 라이더가 도착했어요');
     assert.ok(result.ok);
+  });
+
+  it('returns a quest plan that batches the same menu across fixed orders', async () => {
+    const order = (id: string, qty: number, minute: number) => ({
+      id, items: [{ key: '아이스 아메리카노', label: '아이스 아메리카노', qty }], channel: 'store' as const,
+      created_at: new Date(Date.UTC(2026, 10, 19, 5, minute)).toISOString(), prep_seconds: 120, rider_status: 'none' as const, overtaken: 0, prepared_qty: 0,
+    });
+    const result = await createAiClient(baseUrl, 6000).quest({ fixed: [order('#1', 3, 0), order('#2', 4, 1)], candidates: [order('#5', 1, 2), order('#6', 2, 3)], store: {}, inventory: {} });
+    assert.ok(result.ok, result.ok ? '' : result.error);
+    assert.deepEqual(result.data.candidates.map(({ order_id: id }) => id).sort(), ['#5', '#6']);
+    assert.deepEqual(result.data.plan?.lines[0], { kind: 'make', key: '아이스 아메리카노', label: '아이스 아메리카노', qty: 7, parts: [{ order_id: '#1', qty: 3 }, { order_id: '#2', qty: 4 }] });
+  });
+});
+
+describe('aiserver quest response parsing', () => {
+  const valid = {
+    candidates: [{ order_id: '#5', reason_code: 'batch', reason: '1번 주문과 같이 만들 수 있어요', confidence: 1, source: 'rule' }],
+    plan: { head: '#1', source: 'rule', lines: [
+      { kind: 'make', order_id: null, key: 'k', label: '아아', qty: 4, parts: [{ order_id: '#1', qty: 3 }, { order_id: '#2', qty: 1 }], prepared_qty: null },
+      { kind: 'complete', order_id: '#1', key: null, label: null, qty: null, parts: [], prepared_qty: 2 },
+    ] },
+    fallback: false,
+  };
+
+  it('accepts the aiserver QuestResult shape', () => {
+    const result = parseQuestResult(valid);
+    assert.ok(result);
+    assert.deepEqual(result.plan?.lines[1], { kind: 'complete', order_id: '#1', prepared_qty: 2 });
+    assert.equal(parseQuestResult({ ...valid, plan: null })?.plan, null);
+  });
+
+  it('rejects quest responses outside the contract', () => {
+    assert.equal(parseQuestResult({ ...valid, candidates: [{ order_id: '#5', source: 'zoro' }] }), undefined);
+    assert.equal(parseQuestResult({ ...valid, plan: { ...valid.plan, lines: [{ kind: 'make', key: 'k', label: '아아', qty: 1, parts: [] }] } }), undefined);
+    assert.equal(parseQuestResult({ ...valid, plan: { ...valid.plan, source: 'gpt' } }), undefined);
   });
 });

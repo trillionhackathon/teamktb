@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { buildPlan, emptyQuestState, rankCandidates, reconcile, withObjectParticle, MAX_OVERTAKES } from '../app/client/quest-board.ts';
+import { agentAlerts, applyAiRanking, buildPlan, emptyQuestState, preparedKey, rankCandidates, reconcile, withObjectParticle, MAX_OVERTAKES, type AiQuestHint } from '../app/client/quest-board.ts';
 import { demoOrder } from '../app/server/demo-feed.ts';
 import type { OrderItemView, OrderView } from '../app/domain/views.ts';
+import type { StoreEvent } from '../app/domain/types.ts';
 
 const americano = (qty: number): OrderItemView => ({ name: '아이스 아메리카노', qty, options: [] });
 const vanilla = (qty: number): OrderItemView => ({ name: '바닐라 라떼', qty, options: [] });
@@ -14,6 +15,25 @@ function order(number: number, items: OrderItemView[], patch: Partial<OrderView>
     received_at: new Date(Date.UTC(2026, 10, 19, 5, 0, number)).toISOString(), remaining_work_seconds: 200, price_krw: 4500, ...patch,
   };
 }
+
+it('shows inventory and store incidents even when newer delivery events fill the event feed', () => {
+  const spill: StoreEvent = {
+    event_id: 'spill', category: 'spill_cleanup', raw_text: '바닥에 커피를 쏟았어요',
+    summary: '바닥 청소 필요', needs_confirmation: false, received_at: '2026-11-19T05:00:00Z',
+  };
+  const events = [1, 2, 3].map((number): StoreEvent => ({
+    ...spill, event_id: `rider-${number}`, category: 'rider_arrived', order_id: `#${number}`,
+  }));
+  const alerts = agentAlerts({
+    signals: {
+      inventory: { coffee_beans_shots_left: 8, strawberry_servings_left: 20 },
+      store: { equipment_status: { blender: 'broken' }, staff_count: 2 },
+      delivery: { weather: 'clear' },
+    },
+    events: [...events, spill],
+  });
+  assert.deepEqual(alerts.map(({ id }) => id), ['equipment-blender', 'beans', 'event-spill']);
+});
 
 describe('quest board (mock Zoro)', () => {
   it('batches the same menu across fixed orders, then the head-only menu, then completion', () => {
@@ -83,5 +103,28 @@ describe('quest board (mock Zoro)', () => {
       const result = store.createOrder({ ...demoOrder(random), source: 'demo', request_id: `test-${index}` });
       assert.ok(!('error' in result), 'error' in result ? result.error : '');
     }
+  });
+
+  it('uses the aiserver ranking and plan only when they match the current board', () => {
+    const board = [order(1, [americano(1)]), order(2, [vanilla(1)]), order(3, [vanilla(1)]), order(4, [vanilla(1)]), order(5, [smoothie(1)]), order(6, [americano(1)])];
+    const base = reconcile(emptyQuestState, board);
+    const ai: AiQuestHint = {
+      fixed: base.fixed, candidates: ['#5', '#6'], preparedKey: preparedKey({}, base.fixed),
+      ranking: [{ order_id: '#5', reason: 'Zoro가 골랐어요', source: 'zoro' }, { order_id: '#6', reason: '먼저 접수된 주문이에요', source: 'rule' }],
+      plan: { head: '#1', source: 'rule', lines: [{ kind: 'complete', order_id: '#1', preparedQty: 0 }] },
+    };
+    const local = rankCandidates([board[4], board[5]], board.slice(0, 4), {}, {});
+    assert.equal(local[0].order.order_id, '#6');
+    const ranked = applyAiRanking(local, ai, base.fixed);
+    assert.deepEqual(ranked.map(({ order, source }) => [order.order_id, source]), [['#5', 'zoro'], ['#6', 'rule']]);
+    // 후보가 달라졌으면 aiserver 순위를 버린다.
+    assert.equal(applyAiRanking(local, { ...ai, candidates: ['#5', '#7'] }, base.fixed), local);
+
+    const withAi = reconcile(base, board, ai);
+    assert.equal(withAi.plan?.source, 'rule');
+    // 1번이 끝나 빈 칸이 생기면 aiserver가 고른 #5가 올라간다.
+    const promoted = reconcile(withAi, board.slice(1), ai);
+    assert.deepEqual(promoted.fixed, ['#2', '#3', '#4', '#5']);
+    assert.equal(promoted.plan?.source, 'local');
   });
 });

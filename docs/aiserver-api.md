@@ -9,7 +9,7 @@
                            주문 저장·보드 상태        재배치·팁·입력 분류      POST /v1/systemone
 ```
 
-- 브라우저는 aiserver 주소를 모른다. aiserver 호출은 Next.js 서버의 주문 저장소(`app/server/order-store.ts`)만 한다.
+- 브라우저는 aiserver 주소를 모른다. aiserver 호출은 Next.js 서버의 주문 저장소(`app/server/order-store.ts`)와 퀘스트 보드 중계 API(`app/api/quest/route.ts`)만 한다.
 - aiserver는 상태를 저장하지 않는다. 요청마다 현재 보드 전체를 받아 판단만 돌려준다.
 - 주문 상태 변경(시작·완료·재제조)과 최종 보드 순서 확정은 teamktb가 한다. aiserver 응답은 검증을 통과할 때만 반영한다.
 
@@ -186,6 +186,71 @@ Zoro 연결 여부는 알려 주지 않는다. Zoro가 죽어도 aiserver는 `20
 | `needs_review` | 분류하지 못함. `source: "rule"`, `confidence: 0` |
 
 빈 문자열이나 500자 초과는 `422`다. teamktb 입력창은 300자로 제한한다.
+
+## POST /ai/quest
+
+일머리 퀘스트 보드(대시보드 4+4칸) 판단. 대시보드의 고정칸, 후보, 미리 만든 잔 수가 바뀔 때마다 브라우저가 teamktb `POST /api/quest`를 부르고, Next.js 서버가 이 요청을 만들어 보낸다. aiserver 쪽 구현은 `feat/quest-api` 브랜치의 `app/quest.py`다.
+
+### 요청 — `QuestState`
+
+| 필드 | 형식 | 설명 |
+| --- | --- | --- |
+| `fixed` | `QuestOrder[]` (최대 4) | 1~4번 칸, 칸 순서대로. `fixed[0]`이 지금 퀘스트 대상 |
+| `candidates` | `QuestOrder[]` (최대 4) | 5~8번 후보, 서버 보드 순서 |
+| `store` | `{ [이름]: 상태 }` | 고장 난 장비 (예: `{"블렌더": "고장"}`) |
+| `inventory` | `{ [이름]: 값 }` | 원두, 딸기 남은 양 |
+
+`QuestOrder`
+
+| 필드 | 형식 | 설명 |
+| --- | --- | --- |
+| `id` | string | 주문 번호 |
+| `items` | `{ key, label, qty }[]` | 아직 만들어야 하는 메뉴. 앞 주문 때 미리 만든 잔 수는 뺀 값. `key`가 같으면 같이 만들 수 있다 |
+| `channel` | `"store" \| "delivery"` | |
+| `created_at` | ISO 8601 | 접수 시각 |
+| `prep_seconds` | int | 남은 작업 시간 |
+| `rider_status` | `"none" \| "assigned" \| "arrived"` | |
+| `overtaken` | int | 후보로 있는 동안 뒤 주문에게 앞질린 횟수 |
+| `prepared_qty` | int | 앞 주문을 만들 때 같이 만들어 둔 잔 수 |
+
+### 응답 — `QuestResult`
+
+```json
+{
+  "candidates": [
+    {"order_id": "#7", "reason_code": "rider_waiting", "reason": "라이더가 도착해서 먼저 올려요", "confidence": 1.0, "source": "rule"},
+    {"order_id": "#6", "reason_code": "batch", "reason": "1, 4번 주문과 아이스 아메리카노를 같이 만들 수 있어요", "confidence": 1.0, "source": "rule"}
+  ],
+  "plan": {
+    "head": "#1",
+    "source": "rule",
+    "lines": [
+      {"kind": "make", "key": "아이스 아메리카노", "label": "아이스 아메리카노", "qty": 7, "parts": [{"order_id": "#1", "qty": 3}, {"order_id": "#4", "qty": 4}]},
+      {"kind": "make", "key": "바닐라 라떼", "label": "아이스 바닐라 라떼", "qty": 1, "parts": [{"order_id": "#1", "qty": 1}]},
+      {"kind": "complete", "order_id": "#1", "prepared_qty": 0}
+    ]
+  },
+  "fallback": false
+}
+```
+
+- `candidates`: 후보 순위. 첫 주문이 다음에 고정칸으로 올라간다. `reason_code`는 `overdue`, `rider_waiting`, `batch`, `short_job`, `fifo` 중 하나다.
+- `plan`: `fixed[0]`의 퀘스트. 다른 고정칸과 겹치는 메뉴를 묶어 만들기, `fixed[0]`에만 있는 메뉴 만들기, 완료 누르기 순서다. `fixed`가 비면 `null`이다.
+- `fallback: true`면 Zoro가 응답하지 않아 규칙으로만 판단했다는 뜻이다.
+
+### aiserver의 판단 규칙 (기준이 정해지기 전 임시)
+
+- 후보 순위는 오래 밀린 주문(`QUEST_MAX_OVERTAKES`, 기본 2번), 라이더 도착, 고정칸과 겹치는 잔 수, 짧은 작업(`QUEST_SHORT_JOB_S`, 기본 90초), 접수순 순서로 매긴다.
+- Zoro에는 "고정칸이 비면 어떤 후보를 올릴까"를 `choice`로 묻는다. 확률이 `REORDER_THRESHOLD`(0.7) 이상이면 그 주문을 1순위로 올린다(`source: "zoro"`). 오래 밀린 주문은 Zoro 선택보다 앞선다.
+- 퀘스트 줄은 코드 규칙으로 만든다(`source: "rule"`).
+- 음료별 기준과 매장 상황별 판단은 아직 정하지 않았다. 정해지면 `app/quest.py`의 점수와 Zoro 질문을 바꾼다.
+
+### teamktb의 응답 검증과 반영
+
+- `app/ai/contract.ts` `parseQuestResult`가 형식을 검사한다. 형식이 다르면 쓰지 않는다.
+- 응답은 요청했을 때와 고정칸, 후보, 미리 만든 잔 수가 같을 때만 쓴다. 후보 이유 문장은 고정칸까지 같을 때만 쓴다(칸 번호가 들어 있다).
+- aiserver가 없거나(`AISERVER_URL` 미설정) 응답하지 않으면 같은 규칙을 화면에서 돌린다(`app/client/quest-board.ts`). 화면에는 판단 출처를 "Zoro 판단", "규칙 판단", "화면 규칙"으로 표시한다.
+- teamktb `POST /api/quest`의 응답은 `{ status: "connected", result }` 또는 `{ status: "disabled" | "unavailable", error }`다.
 
 ## 참고: aiserver → Zoro-1
 

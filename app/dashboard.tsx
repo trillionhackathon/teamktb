@@ -1,18 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { callApi, orderPath } from './client/api.ts';
+import type { QuestResponse } from './api/quest/route.ts';
 import {
-  agentAlerts, candidateOrders, emptyQuestState, itemKey, rankCandidates, reconcile, FIXED_COUNT, CANDIDATE_COUNT,
-  type AgentAlert, type QuestState, type TipLine,
+  agentAlerts, applyAiRanking, candidateOrders, emptyQuestState, itemKey, preparedKey, rankCandidates, reconcile, FIXED_COUNT, CANDIDATE_COUNT,
+  type AgentAlert, type AiQuestHint, type DecisionOrigin, type QuestState, type TipLine,
 } from './client/quest-board.ts';
 import { formatClock, formatElapsed, useBoardSnapshot, useNow, type Connection } from './client/use-board.ts';
 import type { BoardSnapshot, OrderView } from './domain/views.ts';
 import type { DemoFeedStatus } from './server/demo-feed.ts';
+import WizardAvatar from './wizard-avatar.tsx';
 
 const connectionLabels: Record<Connection, string> = { connecting: '연결 중', live: '실시간 연결됨', reconnecting: '재연결 중' };
-const storageKey = 'ilmori-quest-board-v2';
+const storageKey = 'ilmori-quest-board-v3';
+
+type AiStatus = 'pending' | 'connected' | 'disabled' | 'unavailable';
+const aiStatusLabels: Record<AiStatus, string> = { pending: 'AI 서버 확인 중', connected: 'AI 서버 연결됨', disabled: 'AI 서버 미설정', unavailable: 'AI 서버 미응답' };
+const originLabels: Record<DecisionOrigin, string> = { zoro: 'Zoro 판단', rule: '규칙 판단', local: '화면 규칙' };
 
 function isQuestState(value: unknown): value is QuestState {
   if (!value || typeof value !== 'object') return false;
@@ -21,7 +27,7 @@ function isQuestState(value: unknown): value is QuestState {
 }
 
 // 고정칸, 미리 만든 메뉴, 앞지르기 횟수는 이 브라우저에만 저장한다(목업). 새로고침해도 퀘스트가 이어진다.
-function useQuestBoard(board: OrderView[]): QuestState {
+function useQuestBoard(board: OrderView[], ai: AiQuestHint | null): QuestState {
   const [state, setState] = useState<QuestState>(emptyQuestState);
   const [loaded, setLoaded] = useState(false);
 
@@ -35,7 +41,7 @@ function useQuestBoard(board: OrderView[]): QuestState {
     setLoaded(true);
   }, []);
 
-  const next = useMemo(() => reconcile(state, board), [state, board]);
+  const next = useMemo(() => reconcile(state, board, ai), [state, board, ai]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -51,14 +57,52 @@ function useQuestBoard(board: OrderView[]): QuestState {
   return next;
 }
 
-function AlertCard({ alert }: { alert: AgentAlert }) {
+// 고정칸, 후보, 미리 만든 잔 수가 바뀔 때마다 /api/quest(aiserver /ai/quest)에 묻는다. 늦게 온 응답은 버린다.
+function useAiQuest(quest: QuestState, board: OrderView[], onResult: (hint: AiQuestHint | null, status: AiStatus) => void) {
+  const fixed = quest.fixed;
+  const candidates = candidateOrders(board, fixed).map(({ order_id: id }) => id);
+  const ids = [...fixed, ...candidates];
+  const prepared = Object.fromEntries(ids.flatMap((id) => (quest.prepared[id] ? [[id, quest.prepared[id]]] : [])));
+  const overtakes = Object.fromEntries(candidates.flatMap((id) => (quest.overtakes[id] ? [[id, quest.overtakes[id]]] : [])));
+  const request = JSON.stringify({ fixed, candidates, prepared, overtakes });
+
+  useEffect(() => {
+    const body = JSON.parse(request) as { fixed: string[]; candidates: string[]; prepared: QuestState['prepared']; overtakes: Record<string, number> };
+    if (body.fixed.length === 0) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const response = await callApi<QuestResponse>('/api/quest', { body });
+      if (cancelled) return;
+      if (!response.ok) return onResult(null, 'unavailable');
+      if (response.data.status !== 'connected') return onResult(null, response.data.status);
+      const { candidates: picks, plan } = response.data.result;
+      onResult({
+        fixed: body.fixed,
+        candidates: body.candidates,
+        preparedKey: preparedKey(body.prepared, body.fixed),
+        ranking: picks.map(({ order_id: id, reason, source }) => ({ order_id: id, reason, source })),
+        plan: plan && {
+          head: plan.head,
+          source: plan.source,
+          lines: plan.lines.map((line): TipLine => (line.kind === 'make' ? line : { kind: 'complete', order_id: line.order_id, preparedQty: line.prepared_qty })),
+        },
+      }, 'connected');
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+function AgentMessage({ alert }: { alert: AgentAlert }) {
   return (
-    <li className={`agent-alert level-${alert.level}`}>
-      <div className="agent-alert-head">
-        <strong>{alert.title}</strong>
-        {alert.sample ? <span className="sample-badge">예시</span> : alert.at ? <span className="agent-alert-time">{formatClock(alert.at)}</span> : null}
-      </div>
+    <li className={`agent-message level-${alert.level}`}>
       <p>{alert.detail}</p>
+      <div className="agent-message-meta">
+        <strong>{alert.title}</strong>
+        {alert.at && <time dateTime={alert.at}>{formatClock(alert.at)}</time>}
+      </div>
     </li>
   );
 }
@@ -95,6 +139,35 @@ function OrderFlags({ order }: { order: OrderView }) {
   return <div className="card-flags">{flags.map(({ text, tone }) => <p key={text} className={`card-flag tone-${tone}`}>{text}</p>)}</div>;
 }
 
+const orderStatusLabels: Record<OrderView['status'], string> = { waiting: '대기 중', in_progress: '제조 중', done: '완료' };
+
+function OrderDetail({ order, prepared, reason, now }: {
+  order: OrderView;
+  prepared: Record<string, number>;
+  reason?: string;
+  now: number;
+}) {
+  return (
+    <>
+      <p className="order-detail-meta">
+        <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
+        <span>{order.source_label} · {orderStatusLabels[order.status]}</span>
+      </p>
+      <dl className="order-detail-facts">
+        <div><dt>접수</dt><dd><time dateTime={order.received_at}>{formatClock(order.received_at)}</time>{order.status === 'waiting' && ` · ${formatElapsed(order.received_at, now)}`}</dd></div>
+        <div><dt>주문 금액</dt><dd>{order.price_krw.toLocaleString('ko-KR')}원</dd></div>
+        {order.status !== 'done' && <div><dt>남은 제조 시간</dt><dd>{order.remaining_work_seconds}초</dd></div>}
+        {order.rider_label && <div><dt>라이더</dt><dd>{order.rider_label}</dd></div>}
+        {order.pickup_eta_seconds != null && <div><dt>픽업 예정</dt><dd>{order.pickup_eta_seconds}초 후{order.eta_confirmed ? ' · 확인됨' : ''}</dd></div>}
+      </dl>
+      <h3>주문 메뉴</h3>
+      <OrderLines order={order} prepared={prepared} />
+      <OrderFlags order={order} />
+      {reason && <p className="card-reason"><strong>추천 이유</strong>{reason}</p>}
+    </>
+  );
+}
+
 function tipText(line: TipLine, slotOf: (id: string) => number): string {
   if (line.kind === 'make') return `${line.label} ${line.qty}잔 만들기`;
   return `${slotOf(line.order_id)}번 주문 완료 누르기`;
@@ -116,10 +189,22 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   const { snapshot: live, connection, clockOffset } = useBoardSnapshot(initial);
   const snapshot = live ?? initial;
   const now = useNow(clockOffset);
-  const quest = useQuestBoard(snapshot.board);
+  const [ai, setAi] = useState<AiQuestHint | null>(null);
+  const [aiStatus, setAiStatus] = useState<AiStatus>('pending');
+  const quest = useQuestBoard(snapshot.board, ai);
+  useAiQuest(quest, snapshot.board, (hint, status) => {
+    setAi(hint);
+    setAiStatus(status);
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feed, setFeed] = useState<DemoFeedStatus | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderView | null>(null);
+  const detailDialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (selectedOrder && !detailDialog.current?.open) detailDialog.current?.showModal();
+  }, [selectedOrder]);
 
   // 시연용 자동 주문 상태. 보드가 바뀔 때마다 다시 읽어 다른 화면에서 켜고 끈 것도 따라간다.
   useEffect(() => {
@@ -134,11 +219,13 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
 
   const byId = new Map(snapshot.board.map((order) => [order.order_id, order]));
   const fixedOrders = quest.fixed.map((id) => byId.get(id)).filter((order): order is OrderView => order !== undefined);
-  const candidates = rankCandidates(candidateOrders(snapshot.board, quest.fixed), fixedOrders, quest.prepared, quest.overtakes);
+  const candidates = applyAiRanking(rankCandidates(candidateOrders(snapshot.board, quest.fixed), fixedOrders, quest.prepared, quest.overtakes), ai, quest.fixed);
   const queueCount = Math.max(0, snapshot.board.length - fixedOrders.length - candidates.length);
   const slotOf = (id: string) => quest.fixed.indexOf(id) + 1;
   const head = fixedOrders[0];
-  const alerts = agentAlerts(snapshot, now);
+  const alerts = agentAlerts(snapshot);
+  const detail = selectedOrder && (byId.get(selectedOrder.order_id)
+    ?? snapshot.history.find((order) => order.order_id === selectedOrder.order_id) ?? selectedOrder);
 
   // 시작 단계 없이 바로 완료한다. 서버는 대기 중인 주문의 완료도 받는다.
   async function completeOrder(order: OrderView) {
@@ -150,11 +237,12 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
 
   return (
     <>
-      <header className="topbar">
+      <header className="topbar quest-topbar">
         <div className="topbar-inner">
           <span className="brand">일머리</span>
           <span className="topbar-meta">
             <span className={`connection connection-${connection}`} role="status">{connectionLabels[connection]}</span>
+            <span className={`ai-status ai-${aiStatus}`} title={aiStatus === 'connected' ? undefined : '화면 규칙으로 판단하고 있어요'}>{aiStatusLabels[aiStatus]}</span>
             {feed && (
               <button type="button" className={`feed-toggle${feed.running ? ' on' : ''}`} onClick={toggleFeed} title={feed.last_error}>
                 {feed.running ? `자동 주문 켜짐 ${feed.created}건` : '자동 주문 켜기'}
@@ -168,13 +256,18 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
 
       <main className="quest-layout">
         <aside className="agent-panel" aria-labelledby="agent-title">
-          <div className="section-heading">
-            <h2 id="agent-title">매장 알림</h2>
-            <span className="section-meta">{alerts.length}건</span>
+          <div className="agent-identity">
+            <WizardAvatar />
+            <div>
+              <h2 id="agent-title">일머리 마법사</h2>
+              <p>매장 상황 · 재고 관리</p>
+            </div>
           </div>
-          <p className="section-sub">에이전트가 재고와 매장 상황을 살펴보고 알려 줘요.</p>
           <ul className="agent-list" aria-live="polite">
-            {alerts.map((alert) => <AlertCard key={alert.id} alert={alert} />)}
+            {alerts.map((alert) => <AgentMessage key={alert.id} alert={alert} />)}
+            {alerts.length === 0 && (
+              <li className="agent-message"><p>표시할 매장 이벤트나 재고 알림이 없어요.</p></li>
+            )}
           </ul>
         </aside>
 
@@ -195,10 +288,12 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                 return (
                   <article key={slot} role="listitem" className={`quest-card fixed${index === 0 ? ' head' : ''}`} aria-label={`${slot}번 칸 ${order.order_id} 주문`}>
                     <div className="card-body" key={order.order_id}>
+                      <button type="button" className="card-detail-trigger" aria-label={`${order.order_id} 주문 상세 보기`} aria-haspopup="dialog" onClick={() => setSelectedOrder(order)} />
                       <div className="card-head">
                         <span className="slot-number">{slot}</span>
                         <strong className="card-order">{order.order_id}</strong>
                         <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
+                        <span className="card-detail-arrow" aria-hidden="true" />
                       </div>
                       <p className="card-wait">{formatElapsed(order.received_at, now)}</p>
                       <OrderLines order={order} prepared={quest.prepared[order.order_id] ?? {}} />
@@ -218,17 +313,19 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                 const candidate = candidates[index];
                 const slot = FIXED_COUNT + index + 1;
                 if (!candidate) return <div key={slot} role="listitem" className="quest-card empty candidate"><span className="slot-number">{slot}</span><p className="card-empty">빈 칸</p></div>;
-                const { order, reason } = candidate;
+                const { order, reason, source } = candidate;
                 return (
                   <article key={slot} role="listitem" className={`quest-card candidate${index === 0 ? ' up-next' : ''}`} aria-label={`${slot}번 칸 ${order.order_id} 후보 주문`}>
                     <div className="card-body" key={order.order_id}>
+                      <button type="button" className="card-detail-trigger" aria-label={`${order.order_id} 주문 상세 보기`} aria-haspopup="dialog" onClick={() => setSelectedOrder(order)} />
                       <div className="card-head">
                         <span className="slot-number">{slot}</span>
                         <strong className="card-order">{order.order_id}</strong>
                         <span className="order-channel" data-channel={order.channel_label}>{order.channel_label}</span>
+                        <span className="card-detail-arrow" aria-hidden="true" />
                       </div>
                       <OrderLines order={order} prepared={quest.prepared[order.order_id] ?? {}} />
-                      <p className="card-reason"><strong>{index === 0 ? '다음 차례' : 'Zoro 판단'}</strong>{reason}</p>
+                      <p className="card-reason"><strong>{index === 0 && <span className="next-badge">다음 차례</span>}{originLabels[source]}</strong>{reason}</p>
                     </div>
                   </article>
                 );
@@ -248,7 +345,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
                     <span className="tip-step">{index + 1}</span>
                     <div>
                       <p className="tip-text">{tipText(line, slotOf)}</p>
-                      <p className="tip-reason"><strong>Zoro 판단</strong>{tipReason(line, head, slotOf, fixedOrders.length > 1)}</p>
+                      <p className="tip-reason"><strong>{originLabels[quest.plan!.source ?? 'local']}</strong>{tipReason(line, head, slotOf, fixedOrders.length > 1)}</p>
                     </div>
                   </li>
                 ))}
@@ -259,6 +356,22 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
           </section>
         </div>
       </main>
+      <dialog ref={detailDialog} className="order-detail" aria-labelledby="order-detail-title" onClose={() => setSelectedOrder(null)}>
+        {detail && (
+          <>
+            <div className="order-detail-heading">
+              <h2 id="order-detail-title">{detail.order_id} 주문 상세</h2>
+              <button type="button" className="secondary-button" onClick={() => detailDialog.current?.close()}>닫기</button>
+            </div>
+            <OrderDetail
+              order={detail}
+              prepared={quest.prepared[detail.order_id] ?? {}}
+              reason={candidates.find(({ order }) => order.order_id === detail.order_id)?.reason}
+              now={now}
+            />
+          </>
+        )}
+      </dialog>
     </>
   );
 }
