@@ -1,14 +1,62 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
-import { parseDecideResult, parseIntentResult, parseQuestResult, toAiRiderStatus, toAiStoreState } from '../app/ai/contract.ts';
+import { parseDecideResult, parseIntentResult, parsePickResult, toAiRiderStatus, toAiStoreState, toPickRequest, type AiPickRequest } from '../app/ai/contract.ts';
 import { moveReasonLabels } from '../app/domain/board.ts';
-import { boardConfig, menuCatalog } from '../app/domain/catalog-data.ts';
+import { boardConfig, menuCatalog, ownerRules } from '../app/domain/catalog-data.ts';
+import type { Fact } from '../app/domain/facts.ts';
 import { createAiClient } from '../app/server/aiserver.ts';
 import { OrderStore } from '../app/server/order-store.ts';
 
 const cafeDb = JSON.parse(readFileSync(new URL('../data/cafe_db.json', import.meta.url), 'utf8'));
 const config = { lockedCount: boardConfig.lockedCount, visibleCount: boardConfig.visibleCount };
+
+// docs/pick-next-implementation.md 11단계 예시(12:37:20, #103 완료 직후)
+const pickRequest: AiPickRequest = {
+  now: '2026-11-19T03:37:20.000Z',
+  baristas: 1,
+  owner_rules: ownerRules.sentences,
+  locked: [
+    { id: '#104', facts: '딸기 스무디 1잔 · 매장 · 재료 준비됨' },
+    { id: '#106', facts: '아이스 아메리카노 2잔 · 배달 · 다 만듦 · 라이더 1분 10초 뒤' },
+    { id: '#107', facts: '딸기 스무디 1잔 · 매장 · 재료 준비됨' },
+  ],
+  candidates: [
+    { id: '#105', facts: '아이스 아메리카노 1잔 · 포장 · 2분 기다림' },
+    { id: '#108', facts: '카페 라떼 2잔 · 포장 · 7분 20초 기다림 · 4번이면 9분 30초에 나감, 밀리면 11분 10초에 나감 (기준 10분 넘김)' },
+    { id: '#109', facts: '아이스 아메리카노 2잔 · 배달 · 라이더 8분 40초 뒤 · 여유 있음' },
+    { id: '#110', facts: '카페 라떼 1잔 · 배달 · 라이더 3분 40초 뒤 · 4번이 아니면 1분 30초 늦음 (기준 2분 안)' },
+  ],
+  rule_pick: '#110',
+  examples: [],
+};
+
+// 테스트용 aiserver. handler가 응답 본문을 정하고, delayMs만큼 늦게 답한다.
+async function withServer(handler: (body: unknown) => { status?: number; body: unknown; delayMs?: number }, run: (baseUrl: string, received: unknown[]) => Promise<void>) {
+  const received: unknown[] = [];
+  const server = createServer((request, response) => {
+    let text = '';
+    request.on('data', (chunk) => { text += chunk; });
+    request.on('end', () => {
+      const body = JSON.parse(text);
+      received.push(body);
+      const reply = handler(body);
+      setTimeout(() => {
+        response.writeHead(reply.status ?? 200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify(reply.body));
+      }, reply.delayMs ?? 0);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await run(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, received);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
 
 describe('aiserver request mapping', () => {
   it('maps cafe_db channels and rider states to aiserver values', () => {
@@ -18,26 +66,34 @@ describe('aiserver request mapping', () => {
     assert.equal(toAiRiderStatus({ channel: 'takeout' }), 'none');
   });
 
-  it('sends the board in slot order with prep time and store signals', () => {
+  it('sends the board in slot order with prep time, overtaken count, and store signals', () => {
     const state = toAiStoreState([
-      { order_id: '#108', channel: 'delivery', source: 'scenario', menu_items: [{ menu: 'strawberry_smoothie', qty: 2, size: 'R', options: [] }], received_at: '2026-11-19T05:00:00.000Z', status: 'waiting', rider_status: 'arrived', remaining_work_seconds: 199, price_krw: 13000 },
+      { order_id: '#108', channel: 'delivery', source: 'scenario', menu_items: [{ menu: 'strawberry_smoothie', qty: 2, size: 'R', options: [] }], received_at: '2026-11-19T05:00:00.000Z', status: 'waiting', rider_status: 'arrived', remaining_work_seconds: 199, price_krw: 13000, overtaken: 2 },
     ], {
       inventory: { coffee_beans_shots_left: 12, strawberry_servings_left: 8 },
       store: { equipment_status: { blender: 'broken' }, staff_count: 2 },
       delivery: { weather: '비' },
     }, { describe: () => '딸기 스무디 2잔', remainingSeconds: (order) => order.remaining_work_seconds });
-    assert.deepEqual(state.orders[0], { id: '#108', items: '딸기 스무디 2잔', channel: 'delivery', created_at: '2026-11-19T05:00:00.000Z', prep_seconds: 199, rider_status: 'arrived', overtaken: 0, remake: false });
+    assert.deepEqual(state.orders[0], { id: '#108', items: '딸기 스무디 2잔', channel: 'delivery', created_at: '2026-11-19T05:00:00.000Z', prep_seconds: 199, rider_status: 'arrived', overtaken: 2, remake: false });
     assert.deepEqual(state.store, { 블렌더: '고장' });
     assert.deepEqual(state.inventory, { 원두: '약 12샷', 딸기: '8인분' });
     assert.deepEqual(state.external, { 날씨: '비' });
   });
+
+  it('builds the pick-next request from the fact lines, candidates in arrival order', () => {
+    const facts = new Map<string, Fact>(pickRequest.candidates.map(({ id, facts: line }) => [id, { line, receivedAt: 0, slackSec: 0 }]));
+    const request = toPickRequest({
+      now: Date.parse(pickRequest.now), baristas: 0, ownerRules: ownerRules.sentences, locked: pickRequest.locked,
+      candidates: pickRequest.candidates.map(({ id }) => id), facts, rulePick: '#110',
+    });
+    assert.deepEqual(request, { ...pickRequest, baristas: 1 });
+  });
 });
 
 describe('aiserver response parsing', () => {
-  it('accepts the output_example in data/cafe_db.json', () => {
+  it('accepts the output_example in data/cafe_db.json (/ai/decide, tips only)', () => {
     const result = parseDecideResult(cafeDb.output_example);
     assert.ok(result);
-    assert.equal(result.locked_count, cafeDb.kds_board.locked_count);
     for (const move of result.moves) assert.ok(moveReasonLabels[move.reason], `missing label for ${move.reason}`);
   });
 
@@ -62,25 +118,65 @@ describe('aiserver response parsing', () => {
     assert.equal(parseDecideResult({ orders: ['#101'], locked_count: 5, tips: [{ id: 'x', text: 'y', confidence: 1, source: 'gpt' }] }), undefined);
     assert.equal(parseIntentResult({ intent: 'x', confidence: '1', source: 'rule' }), undefined);
   });
+
+  it('parses PickResult and rejects malformed ones', () => {
+    const valid = { pick: '#108', source: 'zoro', confidence: 0.78, scores: { '#108': 0.78, '#110': 0.17, '#109': 0.03, '#105': 0.02 }, fallback: false };
+    assert.deepEqual(parsePickResult(valid), valid);
+    assert.deepEqual(parsePickResult({ pick: '#110', source: 'rule', confidence: 1, scores: {}, fallback: true }), { pick: '#110', source: 'rule', confidence: 1, scores: {}, fallback: true });
+    assert.equal(parsePickResult({ ...valid, pick: 108 }), undefined);
+    assert.equal(parsePickResult({ ...valid, source: 'gpt' }), undefined);
+    assert.equal(parsePickResult({ ...valid, confidence: '0.78' }), undefined);
+    assert.equal(parsePickResult({ ...valid, scores: { '#108': 'high' } }), undefined);
+    assert.equal(parsePickResult({ ...valid, fallback: 'no' }), undefined);
+  });
+});
+
+describe('aiserver client: POST /ai/pick-next', () => {
+  it('sends the request and returns a valid answer', async () => {
+    const answer = { pick: '#108', source: 'zoro', confidence: 0.78, scores: { '#108': 0.78, '#110': 0.17 }, fallback: false };
+    await withServer(() => ({ body: answer }), async (baseUrl, received) => {
+      const result = await createAiClient(baseUrl).pickNext(pickRequest);
+      assert.deepEqual(result, { ok: true, data: answer });
+      assert.deepEqual(received, [pickRequest]);
+    });
+  });
+
+  it('reports a response outside the contract as an error', async () => {
+    await withServer(() => ({ body: { pick: '#108' } }), async (baseUrl) => {
+      const result = await createAiClient(baseUrl).pickNext(pickRequest);
+      assert.deepEqual(result, { ok: false, error: 'AI 서버 응답이 계약 형식과 달라요.' });
+    });
+  });
+
+  it('gives up after the timeout so the rule pick stays in slot 4', async () => {
+    await withServer(() => ({ body: { pick: '#108', source: 'zoro', confidence: 0.9, scores: {}, fallback: false }, delayMs: 300 }), async (baseUrl) => {
+      const result = await createAiClient(baseUrl, 50).pickNext(pickRequest);
+      assert.deepEqual(result, { ok: false, error: 'AI 서버가 50ms 안에 응답하지 않았어요.' });
+    });
+  });
 });
 
 // AISERVER_URL이 있으면 실제 aiserver로 저장소를 돌린다. CI에서는 Zoro 없이 규칙 폴백(fallback: true)으로 응답한다.
 describe('aiserver integration', { skip: !process.env.AISERVER_URL && 'AISERVER_URL not set' }, () => {
   const baseUrl = process.env.AISERVER_URL!;
 
-  it('runs SC-B through the real aiserver: #108 moves to slot 6, slots 1-5 stay', async () => {
-    const store = new OrderStore({ catalog: menuCatalog, config, ai: createAiClient(baseUrl, 3000), decideDelayMs: 0 });
+  it('runs SC-B through the real aiserver: #108 goes to slot 4 at the next completion', async () => {
+    const store = new OrderStore({ catalog: menuCatalog, config, ai: createAiClient(baseUrl, 6000), decideDelayMs: 0 });
     store.loadScenario('SC-B');
     await store.runTrigger('SC-B', 0);
     await store.settle();
+    assert.equal(store.snapshot().decision.ai_status, 'connected', store.snapshot().decision.ai_error);
+    store.updateOrderStatus('#101', 'complete');
+    await store.settle();
     const snapshot = store.snapshot();
-    assert.equal(snapshot.decision.ai_status, 'connected', snapshot.decision.ai_error);
     const board = snapshot.board.map(({ order_id: id }) => id);
-    assert.deepEqual(board.slice(0, 6), ['#101', '#102', '#103', '#104', '#105', '#108']);
-    assert.deepEqual([...board.slice(6)].sort(), ['#106', '#107', '#109', '#110'], 'aiserver rule orders the rest (short jobs first)');
+    assert.deepEqual(board.slice(0, 3), ['#102', '#103', '#104']);
+    assert.ok(['#105', '#106', '#107', '#108'].includes(board[3]));
+    assert.equal(snapshot.slot4?.status, 'final');
+    assert.equal(snapshot.slot4?.rule_pick, '#108');
   });
 
-  it('accepts kiosk orders beyond 10 and returns a DecideResult that passes validation', async () => {
+  it('accepts kiosk orders beyond 8 and returns a DecideResult that passes validation', async () => {
     const store = new OrderStore({ catalog: menuCatalog, config, ai: createAiClient(baseUrl, 3000), decideDelayMs: 0 });
     store.createOrder({ channel: 'takeout', source: 'kiosk', menu_items: [{ menu: 'iced_americano', qty: 3 }] });
     await store.settle();
@@ -103,38 +199,14 @@ describe('aiserver integration', { skip: !process.env.AISERVER_URL && 'AISERVER_
     assert.ok(result.ok);
   });
 
-  it('returns a quest plan that batches the same menu across fixed orders', async () => {
-    const order = (id: string, qty: number, minute: number) => ({
-      id, items: [{ key: '아이스 아메리카노', label: '아이스 아메리카노', qty }], channel: 'store' as const,
-      created_at: new Date(Date.UTC(2026, 10, 19, 5, minute)).toISOString(), prep_seconds: 120, rider_status: 'none' as const, overtaken: 0, prepared_qty: 0,
-    });
-    const result = await createAiClient(baseUrl, 6000).quest({ fixed: [order('#1', 3, 0), order('#2', 4, 1)], candidates: [order('#5', 1, 2), order('#6', 2, 3)], store: {}, inventory: {} });
+  it('answers pick-next with a candidate, the rule pick when Zoro is down', async () => {
+    const result = await createAiClient(baseUrl, 6000).pickNext(pickRequest);
     assert.ok(result.ok, result.ok ? '' : result.error);
-    assert.deepEqual(result.data.candidates.map(({ order_id: id }) => id).sort(), ['#5', '#6']);
-    assert.deepEqual(result.data.plan?.lines[0], { kind: 'make', key: '아이스 아메리카노', label: '아이스 아메리카노', qty: 7, parts: [{ order_id: '#1', qty: 3 }, { order_id: '#2', qty: 4 }] });
-  });
-});
-
-describe('aiserver quest response parsing', () => {
-  const valid = {
-    candidates: [{ order_id: '#5', reason_code: 'batch', reason: '1번 주문과 같이 만들 수 있어요', confidence: 1, source: 'rule' }],
-    plan: { head: '#1', source: 'rule', lines: [
-      { kind: 'make', order_id: null, key: 'k', label: '아아', qty: 4, parts: [{ order_id: '#1', qty: 3 }, { order_id: '#2', qty: 1 }], prepared_qty: null },
-      { kind: 'complete', order_id: '#1', key: null, label: null, qty: null, parts: [], prepared_qty: 2 },
-    ] },
-    fallback: false,
-  };
-
-  it('accepts the aiserver QuestResult shape', () => {
-    const result = parseQuestResult(valid);
-    assert.ok(result);
-    assert.deepEqual(result.plan?.lines[1], { kind: 'complete', order_id: '#1', prepared_qty: 2 });
-    assert.equal(parseQuestResult({ ...valid, plan: null })?.plan, null);
-  });
-
-  it('rejects quest responses outside the contract', () => {
-    assert.equal(parseQuestResult({ ...valid, candidates: [{ order_id: '#5', source: 'zoro' }] }), undefined);
-    assert.equal(parseQuestResult({ ...valid, plan: { ...valid.plan, lines: [{ kind: 'make', key: 'k', label: '아아', qty: 1, parts: [] }] } }), undefined);
-    assert.equal(parseQuestResult({ ...valid, plan: { ...valid.plan, source: 'gpt' } }), undefined);
+    assert.ok(pickRequest.candidates.some(({ id }) => id === result.data.pick));
+    if (result.data.fallback) assert.deepEqual([result.data.pick, result.data.source], ['#110', 'rule']);
+    const bad = await fetch(new URL('/ai/pick-next', baseUrl), {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...pickRequest, rule_pick: '#999' }),
+    });
+    assert.equal(bad.status, 422);
   });
 });

@@ -58,7 +58,7 @@ export function interpretEvent(rawText: string, explicitOrderId?: string, hint?:
       return {
         category: 'equipment_failure',
         needs_confirmation: false,
-        summary: '블렌더 고장 - 스무디 포함 주문 재배치 후보에서 제외',
+        summary: '블렌더 고장 - 스무디 포함 주문 4번 후보에서 제외',
         effects: [
           { type: 'equipment', equipment: 'blender', status: 'broken' },
           { type: 'tip', tip: { id: 'blender', text: '블렌더 고장 - 스무디 포함 주문 보류', source: 'rule' } },
@@ -115,7 +115,7 @@ export function interpretEvent(rawText: string, explicitOrderId?: string, hint?:
         category: 'rider_arrived',
         order_id: orderId,
         needs_confirmation: false,
-        summary: `${orderId} 라이더 도착 - 6~10번 칸에서 우선`,
+        summary: `${orderId} 라이더 도착 - 다음 4번 고르기에서 반영`,
         effects: [{ type: 'rider_status', order_id: orderId, status: 'arrived' }],
       };
     }

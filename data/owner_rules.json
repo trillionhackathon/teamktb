@@ -1,0 +1,8 @@
+{
+  "note": "사장님 기준. sentences는 aiserver /ai/pick-next로 Zoro에 보내고, limits는 사실 계산(app/domain/facts.ts)과 룰(app/domain/board.ts rulePickNext)에 쓴다. 문장과 숫자가 같은 내용을 말하도록 같이 고친다.",
+  "sentences": [
+    "매장·포장 손님은 10분을 넘기지 않는다",
+    "배달은 라이더 도착보다 2분까지 늦어도 괜찮다"
+  ],
+  "limits": { "max_wait_sec": 600, "delivery_late_ok_sec": 120, "max_overtaken": 3 }
+}

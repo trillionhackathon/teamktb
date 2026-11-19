@@ -20,7 +20,7 @@
       {
         "id": "priority_order",
         "type": "choice",
-        "scope": "6~10번 칸 중 다음에 먼저 만들 주문. KEEP=현재 유지 포함",
+        "scope": "1번 완료 때 5~8번 대기 주문 중 4번에 넣을 주문 (aiserver POST /ai/pick-next)",
         "writes_to": "scheduler"
       },
       {
@@ -45,11 +45,11 @@
   },
   "kds_board": {
     "rows": 2,
-    "cols": 5,
-    "locked_row": "top (slots 1-5) — FIFO 고정, AI가 순서를 바꾸지 않음",
-    "reorderable_row": "bottom (slots 6-10) — Zoro의 priority_order 판단이 반영됨",
-    "locked_count": 5,
-    "overflow": "11번째 주문부터 화면 밖 대기열",
+    "cols": 4,
+    "locked_row": "top (slots 1-4) — 고정. 1번 완료까지 할 일을 작업창에 쓴다",
+    "reorderable_row": "bottom (slots 5-8) — 들어온 순서로 대기. 1번 완료 때 이 중 하나를 골라 4번에 넣는다(Zoro priority_order, 확신이 낮으면 룰)",
+    "locked_count": 4,
+    "overflow": "9번째 주문부터 화면 밖 대기열",
     "card_fields": [
       "order_id",
       "menu_items",
@@ -59,7 +59,7 @@
       "complete_button"
     ],
     "elapsed_time_rule": "경과 시간은 접수 시각부터 고정. 재배치해도 안 바뀜 — 바뀌는 건 eta뿐",
-    "promotion_rule": "완료 버튼 누르면 카드 제거, 6번이 5번으로 올라가는 순간 그 자리의 순서가 고정됨",
+    "promotion_rule": "1번 완료 → 2~4번이 1~3번으로 → 5~8번 중 하나를 골라 4번에 넣고 고정",
     "spill_handling": "쏟음 등 재제조는 새 카드로 만들어 1번 슬롯에 직접 삽입 — 고정칸 예외이며 AI가 아니라 코드가 처리. work_tip 칸의 청소 안내와는 별개 이벤트"
   },
   "signals_schema": {
@@ -686,7 +686,7 @@
     {
       "feature": "priority_order",
       "primary": "zoro",
-      "on_low_confidence_or_fail": "rule: FIFO + 라이더 도착 우선",
+      "on_low_confidence_or_fail": "rule: 3번 이상 밀린 주문 → 밀리면 기준 넘게 늦는 배달 → 가장 오래 기다린 주문 (data/owner_rules.json limits)",
       "on_rule_fail": null,
       "latency_budget_sec": 0.5
     },

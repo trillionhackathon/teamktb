@@ -1,4 +1,4 @@
-import type { Channel, Decision, OrderSource, OrderStatus, RiderStatus, Signals, StoreEvent, Tip } from './types.ts';
+import type { Channel, Decision, OrderSource, OrderStatus, RiderStatus, Signals, Slot4Info, StoreEvent, Tip, WorkStep } from './types.ts';
 
 // 서버가 화면으로 보내는 스냅샷. 화면은 메뉴 원본(recipe.json) 없이 이 값만으로 그린다.
 export type OrderItemView = { name: string; qty: number; options: string[] };
@@ -22,10 +22,15 @@ export type OrderView = {
   completed_at?: string;
   remaining_work_seconds: number;
   price_krw: number;
+  rider_eta_at?: string;
+  // 4번 고르기에서 밀린 횟수, 미리 만든 주문, 스무디 재료만 준비한 주문
+  overtaken?: number;
+  made?: boolean;
+  prepped?: boolean;
   slot?: number;
+  // locked: 1~4번 고정, flexible: 5~8번 대기, queue: 화면 밖 대기열
   zone?: 'locked' | 'flexible' | 'queue';
   blocked_reason?: string;
-  move_reason?: string;
   eta_seconds?: number;
 };
 
@@ -45,6 +50,10 @@ export type BoardSnapshot = {
   scenarios: { id: string; title: string }[];
   availability: Record<string, string>;
   config: { lockedCount: number; visibleCount: number };
+  // 4번을 누가 골랐는지(확인 중, Zoro, 룰). 4번 칸에 있는 주문일 때만 있다.
+  slot4?: Slot4Info;
+  // 1번 완료까지 할 일. 마지막 줄은 "주문 #101 완료"
+  work_window: WorkStep[];
 };
 
 export const channelLabels: Record<Channel, string> = { 'dine-in': '매장', takeout: '포장', delivery: '배달' };

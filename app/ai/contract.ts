@@ -1,3 +1,4 @@
+import type { Fact } from '../domain/facts.ts';
 import type { Order, Signals } from '../domain/types.ts';
 
 // aiserver(feat/ai-skeleton) app/schemas.py와 맞춘 요청·응답 형식이다. 서버 스키마가 바뀌면 이 파일과 tests/ai-contract.test.ts를 함께 고친다.
@@ -52,7 +53,8 @@ export function toAiRiderStatus(order: Pick<Order, 'channel' | 'rider_status'>):
   return order.rider_status === 'dispatched' ? 'assigned' : 'none';
 }
 
-// 보드 순서(1~5번 고정 + 재배치칸 + 대기열) 그대로 보낸다. 진행 중인 주문은 남은 작업 시간만 보낸다.
+// 보드 순서(1~4번 고정 + 5~8번 대기) 그대로 보낸다. 진행 중인 주문은 남은 작업 시간만 보낸다.
+// teamktb는 이 요청의 응답에서 팁만 쓰고 orders는 반영하지 않는다(보드 순서는 4번 고르기만 바꾼다).
 export function toAiStoreState(board: Order[], signals: Signals, options: { describe: (order: Order) => string; remainingSeconds: (order: Order) => number }): AiStoreState {
   const broken = Object.entries(signals.store.equipment_status).filter(([, status]) => status === 'broken').map(([name]) => name);
   return {
@@ -63,7 +65,7 @@ export function toAiStoreState(board: Order[], signals: Signals, options: { desc
       created_at: order.received_at,
       prep_seconds: Math.round(options.remainingSeconds(order)),
       rider_status: toAiRiderStatus(order),
-      overtaken: 0,
+      overtaken: order.overtaken ?? 0,
       remake: false,
     })),
     store: Object.fromEntries(broken.map((name) => [name === 'blender' ? '블렌더' : name, '고장'])),
@@ -103,65 +105,55 @@ export function parseIntentResult(value: unknown): IntentResult | undefined {
   return { intent: value.intent, confidence: value.confidence, source: value.source };
 }
 
-// ---- 일머리 퀘스트 보드: POST /ai/quest (aiserver feat/quest-api app/schemas.py QuestState, QuestResult) ----
+// ---- 4번 칸 고르기: POST /ai/pick-next (aiserver app/schemas.py PickRequest, PickResult) ----
+// 숫자는 teamktb가 계산해 문장으로 넣고, Zoro는 사장님 기준을 보고 후보 중 하나를 고르기만 한다.
 
-export type AiQuestItem = { key: string; label: string; qty: number };
+export type AiPickFact = { id: string; facts: string };
 
-export type AiQuestOrder = {
-  id: string;
-  items: AiQuestItem[];
-  channel: 'store' | 'delivery';
-  created_at: string;
-  prep_seconds: number;
-  rider_status: 'none' | 'assigned' | 'arrived';
-  overtaken: number;
-  prepared_qty: number;
+export type AiPickRequest = {
+  now: string;                // ISO 8601 UTC
+  baristas: number;
+  owner_rules: string[];
+  locked: AiPickFact[];       // 새 1~3번(칸 순서)
+  candidates: AiPickFact[];   // 들어온 순서
+  rule_pick: string;
+  examples: string[];         // 알바가 고친 예시(처음엔 빈 배열)
 };
 
-export type AiQuestState = {
-  fixed: AiQuestOrder[];
-  candidates: AiQuestOrder[];
-  store: Record<string, string>;
-  inventory: Record<string, string>;
-};
-
-export type AiCandidatePick = { order_id: string; reason_code: string; reason: string; confidence: number; source: AiSource };
-
-export type AiQuestLine =
-  | { kind: 'make'; key: string; label: string; qty: number; parts: { order_id: string; qty: number }[] }
-  | { kind: 'complete'; order_id: string; prepared_qty: number };
-
-export type QuestResult = {
-  candidates: AiCandidatePick[];
-  plan: { head: string; lines: AiQuestLine[]; source: AiSource } | null;
+export type AiPickResult = {
+  pick: string;
+  source: AiSource;
+  confidence: number;
+  scores: Record<string, number>;
   fallback: boolean;
 };
 
-function parseQuestLine(value: unknown): AiQuestLine | undefined {
-  if (!isRecord(value)) return undefined;
-  if (value.kind === 'complete') {
-    if (typeof value.order_id !== 'string') return undefined;
-    return { kind: 'complete', order_id: value.order_id, prepared_qty: Number.isSafeInteger(value.prepared_qty) ? value.prepared_qty as number : 0 };
-  }
-  if (value.kind !== 'make' || typeof value.key !== 'string' || typeof value.label !== 'string' || !Number.isSafeInteger(value.qty)) return undefined;
-  if (!Array.isArray(value.parts) || value.parts.length === 0
-    || !value.parts.every((part) => isRecord(part) && typeof part.order_id === 'string' && Number.isSafeInteger(part.qty))) return undefined;
-  return { kind: 'make', key: value.key, label: value.label, qty: value.qty as number, parts: (value.parts as Record<string, unknown>[]).map((part) => ({ order_id: part.order_id as string, qty: part.qty as number })) };
+export function toPickRequest(input: {
+  now: number;
+  baristas: number;
+  ownerRules: string[];
+  locked: AiPickFact[];
+  candidates: string[];
+  facts: Map<string, Fact>;
+  rulePick: string;
+  examples?: string[];
+}): AiPickRequest {
+  return {
+    now: new Date(input.now).toISOString(),
+    baristas: Math.max(1, input.baristas),
+    owner_rules: input.ownerRules,
+    locked: input.locked,
+    candidates: input.candidates.map((id) => ({ id, facts: input.facts.get(id)?.line ?? '' })),
+    rule_pick: input.rulePick,
+    examples: input.examples ?? [],
+  };
 }
 
-export function parseQuestResult(value: unknown): QuestResult | undefined {
+export function parsePickResult(value: unknown): AiPickResult | undefined {
   if (!isRecord(value)) return undefined;
-  const { candidates, plan, fallback = false } = value;
-  if (!Array.isArray(candidates) || !candidates.every((pick) => isRecord(pick)
-    && typeof pick.order_id === 'string' && typeof pick.reason_code === 'string' && typeof pick.reason === 'string'
-    && isFiniteNumber(pick.confidence) && isSource(pick.source))) return undefined;
-  if (typeof fallback !== 'boolean') return undefined;
-  let parsedPlan: QuestResult['plan'] = null;
-  if (plan !== null && plan !== undefined) {
-    if (!isRecord(plan) || typeof plan.head !== 'string' || !isSource(plan.source) || !Array.isArray(plan.lines)) return undefined;
-    const lines = plan.lines.map(parseQuestLine);
-    if (lines.some((line) => line === undefined)) return undefined;
-    parsedPlan = { head: plan.head, lines: lines as AiQuestLine[], source: plan.source };
-  }
-  return { candidates: candidates as AiCandidatePick[], plan: parsedPlan, fallback };
+  const { pick, source, confidence, scores = {}, fallback = false } = value;
+  if (typeof pick !== 'string' || !isSource(source) || !isFiniteNumber(confidence) || typeof fallback !== 'boolean') return undefined;
+  if (!isRecord(scores) || !Object.values(scores).every(isFiniteNumber)) return undefined;
+  return { pick, source, confidence, scores: scores as Record<string, number>, fallback };
 }
+
