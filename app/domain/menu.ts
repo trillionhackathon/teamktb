@@ -20,6 +20,10 @@ export type MenuDrink = {
   espresso_shots: number;
   strawberry_servings: number;
   steps?: string[];       // 만드는 순서(recipe.json). Zoro가 비슷한 메뉴를 알아볼 때 읽는다
+  // recipe.json step_seconds에서 계산. hands_sec: 1잔에 손이 드는 시간(attended 합).
+  // idle: 손이 비는 단계 중 가장 긴 것(attended=false, 예: 샷 추출 30초). 이 시간에 디저트를 먼저 내보낼 수 있다.
+  hands_sec?: number;
+  idle?: { sec: number; label: string };
   group?: MenuGroup;      // 비슷한 계열(data/menu_groups.json). 같은 계열은 연달아 만들면 준비를 나눠 쓴다
 };
 

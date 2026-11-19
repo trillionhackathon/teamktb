@@ -16,7 +16,7 @@ npm run dev
 
 | 화면 | 역할 |
 | --- | --- |
-| [주방 운영 보드](http://localhost:3000) | 왼쪽 일머리 마법사(재고·매장 알림), 오른쪽 위 4+4 주문 보드(1~4번 고정, 5~8번 들어온 순서로 대기), 오른쪽 아래 작업창(1~4번을 같이 보고 1번 완료까지 할 일, 마지막 줄이 완료 버튼). 4번 카드에는 누가 골랐는지(확인 중 · Zoro 0.78 · 룰)를 붙입니다. 상단 버튼으로 시연용 자동 주문을 켜고 끕니다 |
+| [주방 운영 보드](http://localhost:3000) | 왼쪽 일머리 마법사(재고·매장 알림), 오른쪽 위 주문 보드(1~7번 들어온 순서, 8번 빠른 주문 칸), 오른쪽 아래 일머리 팁(1번과 같이 만들 주문과 그 이유, 손 비는 시간에 먼저 낼 디저트). 상단에서 시연 장면을 불러오고 시연용 자동 주문을 켜고 끕니다 |
 | [키오스크](http://localhost:3000/kiosk) | 매장·포장 주문과 목업 결제. 결제가 끝나면 서버가 매긴 주문 번호와 예상 대기시간을 보여줍니다 |
 | [배달 목업](http://localhost:3000/delivery) | 배달앱 주문과 라이더 메시지(거의 다 왔어요, N분 뒤 도착, 도착) |
 
@@ -28,9 +28,11 @@ npm run dev
 ```
 
 - 재고는 SQLite(`INVENTORY_DB`, 기본 `.data/inventory.sqlite`)에 있습니다. 처음 실행할 때 [data/inventory.json](./data/inventory.json)으로 채우고, 주문이 완료되면 레시피 사용량만큼 빼며 주문 출처(kiosk, delivery_app, demo)를 남깁니다. 주문 접수 때 원두와 딸기 검사는 SQLite 재고에서 보드에 남은 주문이 쓸 양을 뺀 값으로 합니다. `INVENTORY_COUNT_DEMO=0`이면 시연용 자동 주문은 재고에서 빼지 않습니다.
-- 보드 순서는 서버 주문 저장소가 정합니다. 1번(고정칸) 완료 때만 2~4번을 당기고 대기 5~8번 중 하나를 골라 4번에 넣습니다. 새 주문은 맨 뒤에 붙고, 요청사항·매장 이벤트는 카드 내용만 바꿉니다. 설계는 [docs/pick-next-implementation.md](./docs/pick-next-implementation.md)입니다.
-- 4번 고르기: 코드가 후보마다 사실 문장을 계산하고([app/domain/facts.ts](./app/domain/facts.ts)), 룰 선택을 먼저 넣은 뒤 Zoro가 [data/owner_rules.json](./data/owner_rules.json)의 사장님 기준을 보고 고릅니다. Zoro가 답하면 확률과 상관없이 Zoro가 고른 주문이 4번에 들어가고, Zoro가 답하지 못할 때(aiserver 미설정·타임아웃·오류)만 룰 선택(3번 밀린 주문 → 밀리면 기준 넘게 늦는 배달 → 가장 오래 기다린 주문)이 남습니다.
-- 작업창([app/domain/work-window.ts](./app/domain/work-window.ts))은 같은 메뉴를 묶고, 디카페인·오트밀크처럼 묶을 수 없는 옵션은 따로, 스무디는 1~2번이면 갈기·3~4번이면 재료만 준비로 씁니다. 완료를 누르면 작업창에서 같이 만든 주문은 '만듦'이 되어 다음에는 포장만 남습니다.
+- 보드 순서는 서버 주문 저장소가 정하고, 들어온 순서(FIFO, `cafe_db.json` `kds_board.fifo`)를 바꾸지 않습니다. 새 주문은 맨 뒤에 붙고, 요청사항·매장 이벤트는 카드 내용만 바꿉니다.
+- 1번 기준 같이 만들기(Zoro): 위 4칸이 바뀔 때마다 `/ai/group-orders`에 1번(`anchor`)과 2~4번의 레시피를 보내고, Zoro가 1번과 비슷하다고 본 주문(0.5 이상)만 1번과 같은 초록색으로 칠합니다. 2~4번끼리는 비교하지 않습니다. 디카페인·오트밀크처럼 같이 못 만드는 줄과 고장 난 장비를 쓰는 주문은 코드가 먼저 빼고, 같은 메뉴는 Zoro에 묻지 않고 묶습니다. 1번을 앞에서 같이 만들어 뒀으면(포장만 남음) 그다음 주문이 기준이 됩니다. 1번을 완료하면 같이 만든 주문은 '만듦'(삭선)이 됩니다. 코드는 [app/domain/review.ts](./app/domain/review.ts)입니다.
+- 일머리 팁의 문장은 코드가 쉬운 말로 씁니다. 같이 만드는 이유는 레시피에서 같은 메뉴인지, 같이 쓰는 장비(에스프레소 샷, 우유 스팀, 블렌더 등)가 무엇인지로 정하고, Zoro 점수는 작은 글씨로 붙입니다.
+- 8번 빠른 주문 칸(`kds_board.quick_lane`, 코드 규칙): FIFO는 1~7번만 쓰고, 8번에는 1~4번 밖(화면 밖 대기열 포함)에서 가장 먼저 들어온 매장·포장 디저트 전용 주문(아이스크림, 티라미수)을 띄웁니다. 기준 주문 레시피에 손이 비는 단계(`step_seconds`의 `attended: false`, 예: 샷 추출 30초)가 있고 그 시간이 디저트 손 시간보다 길면 "지금 내주세요"가 됩니다. 배달은 라이더가 올 때까지 녹아서 뺍니다. 내준 디저트는 바로 완료되고, 키오스크 예상 대기시간도 FIFO 차례가 아니라 이 기준으로 계산합니다.
+- 4번 고르기(`/ai/pick-next`)와 작업창은 `fifo`를 끄면 다시 켜집니다. 설계는 [docs/pick-next-implementation.md](./docs/pick-next-implementation.md)입니다.
 - 메뉴·가격·옵션은 [data/recipe.json](./data/recipe.json), 제조 시간·보드 규칙·신뢰도 기준은 [data/cafe_db.json](./data/cafe_db.json), 시나리오는 [data/scenarios.json](./data/scenarios.json)과 [scenarios.md](./scenarios.md)를 읽습니다. 화면 쪽 하드코딩 메뉴는 없습니다.
 - 주문 형식은 `cafe_db.json`의 `signals_schema.order`를 따릅니다(`order_id: "#101"`, `menu_items: [{menu, qty, size, options}]`, `channel: dine-in | takeout | delivery`).
 - 제조 시간은 `remaining_work_formula`(첫 잔 + (수량-1)×추가 잔 + 옵션 `prep_delta_sec`)로 계산합니다. MVP 3종 외 음료는 같은 `complexity_tier` MVP 메뉴 값을 추정치로 씁니다(키오스크에 `(추정)` 표시).
@@ -49,6 +51,7 @@ npm run dev
 | SC-01 | scenarios.md | `#111` 아이스 아메리카노 3잔 접수 → 대기열, 예상 대기시간 |
 | SC-02 | scenarios.md | 쏟음 → 청소 팁(위치가 없으면 확인 필요) |
 | SC-05 | scenarios.md | 블렌더 고장 → 스무디 포함 주문은 보드에 남고 4번 후보·신규 주문에서 제외, 작업창에는 보류로 표시 |
+| SC-Q | 시연용 | 1번 라떼와 #102 아이스 라떼는 같이(Zoro), #103 스무디는 따로(Zoro), #104 디카페인은 따로(코드). 화면 밖 10번째 #110 티라미수가 8번 칸에 올라와 샷 추출 30초 동안 먼저 나감. 입력 버튼으로 포장 아이스크림 추가 |
 
 같은 입력을 두 번 눌러도 한 번만 처리합니다(INV-03). 상황 입력창에 `108번 라이더 도착했어요`, `블렌더 고장`처럼 직접 입력해도 같은 규칙으로 처리합니다.
 
@@ -74,6 +77,7 @@ npm run dev
 | POST | `/api/orders` | 주문 접수 `{ request_id?, channel, source, menu_items, request_note? }` — 같은 `request_id`는 같은 주문 반환 |
 | PATCH | `/api/orders/:번호` | `{ action: 'start' \| 'complete' }` |
 | POST | `/api/events` | 매장 상황·라이더 메시지 `{ event_id, raw_text, order_id? }` |
+| POST | `/api/notes` | 8번 빠른 주문 칸 디저트를 내줬을 때 `{ note_id: "quick:#번호" }`. 8번 칸에 있는 주문만 완료한다 |
 | DELETE | `/api/tips/:id` | 팁 해제 |
 | GET, POST | `/api/scenarios` | 시나리오 목록, `{ scenario_id }` 불러오기, `{ scenario_id, trigger }` 재생 |
 | GET | `/api/menu` | 메뉴 카탈로그와 주문 가능 여부 |
@@ -93,6 +97,16 @@ npm run build
 
 ```sh
 AISERVER_URL=http://127.0.0.1:8000 npm test
+```
+
+Zoro 서버 없이 화면 흐름을 끝까지 보려면 aiserver의 Zoro 대역(`scripts/stub_zoro.py`, 진짜 Zoro가 아니고 장비가 겹치면 비슷하다고 답함)을 씁니다. 대역으로 나온 묶음은 Zoro 정확도로 쓰면 안 됩니다.
+
+```sh
+# aiserver 폴더
+uv run uvicorn scripts.stub_zoro:app --port 8090
+ZORO_BASE_URL=http://127.0.0.1:8090 uv run uvicorn app.main:app --port 8001
+# teamktb 폴더
+AISERVER_URL=http://127.0.0.1:8001 npm run dev   # 상단 시연 장면에서 SC-Q를 고른다
 ```
 
 GitHub Actions(`.github/workflows/ci.yml`)는 PR과 `main` 푸시마다 위 명령을 실행합니다. `AISERVER_REPO_TOKEN` 시크릿(aiserver 저장소 읽기 권한)이 있으면 aiserver를 체크아웃해 계약 테스트도 실행하며, 브랜치는 저장소 변수 `AISERVER_REF`(기본 `feat/ai-skeleton`)로 정합니다.

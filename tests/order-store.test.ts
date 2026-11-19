@@ -406,7 +406,7 @@ describe('OrderStore with aiserver', () => {
   });
   describe('FIFO board with Zoro grouping of the top 4 and the note cards below', () => {
     const fifoConfig = { ...config, fifo: true };
-    const group = (groups: Record<string, number>): AiResult<AiGroupResult> => ({ ok: true, data: { groups, fallback: false } });
+    const group = (groups: Record<string, number>, scores: Record<string, number> = {}): AiResult<AiGroupResult> => ({ ok: true, data: { groups, scores, fallback: false } });
     const fifoStore = (groupOrders?: (request: AiGroupRequest) => Promise<AiResult<AiGroupResult>>, pickNext = async (): Promise<AiResult<AiPickResult>> => { throw new Error('Zoro must not pick slot 4 in FIFO'); }) =>
       new OrderStore({ catalog: menuCatalog, config: fifoConfig, decideDelayMs: 0, ai: { ...fakeAi({ groupOrders }), pickNext } });
 
@@ -419,16 +419,51 @@ describe('OrderStore with aiserver', () => {
       assert.equal(store.snapshot().slot4?.source, 'rule');
     });
 
-    it('sends only the top 4 orders with their recipes, and colours the groups Zoro returns', async () => {
+    it('asks Zoro only about #1 (anchor) against 2-4 with their recipes, and colours #1 and its companions', async () => {
       const requests: AiGroupRequest[] = [];
-      const store = fifoStore(async (request) => { requests.push(request); return group({ '#101': 1, '#103': 1, '#102': 2 }); });
+      const store = fifoStore(async (request) => { requests.push(request); return group({ '#101': 1, '#103': 1, '#102': 2 }, { '#102': 0.2, '#103': 0.91, '#104': 0.1 }); });
       await store.settle();
+      assert.equal(requests[0].anchor, '#101');
       assert.deepEqual(requests[0].orders.map(({ id }) => id), ['#101', '#102', '#103', '#104']);
       assert.ok(requests[0].orders.every(({ menus }) => menus.length > 0 && menus.every(({ steps }) => steps.length > 0)), 'Zoro reads the recipe steps');
       const { review } = store.snapshot();
       assert.equal(review.status, 'ready');
-      assert.deepEqual(Object.keys(review.groups).sort(), ['#101', '#103'], 'a group of one is not shown');
+      assert.equal(review.anchor, '#101');
+      assert.deepEqual(Object.keys(review.groups).sort(), ['#101', '#103'], 'only #1 and its companions; a group without #1 is ignored');
+      assert.equal(review.groups['#101'].role, 'anchor');
+      assert.deepEqual({ role: review.groups['#103'].role, score: review.groups['#103'].score }, { role: 'companion', score: 0.91 });
       assert.equal(review.groups['#101'].color, review.groups['#103'].color);
+      const head = store.snapshot().notes.find(({ kind }) => kind === 'head')!;
+      assert.match(head.zoro!, /#103 0\.91/, 'the card shows the Zoro scores in small print');
+      assert.equal(head.reason, '#102 아이스 아메리카노는 만드는 방법이 달라서, #104 카페 라떼는 만드는 방법이 달라서 따로 만들어요.');
+    });
+
+    it('leaves decaf and oat-milk lines out before asking Zoro (code rule) and says why', async () => {
+      const requests: AiGroupRequest[] = [];
+      const store = fifoStore(async (request) => { requests.push(request); return group({}); });
+      store.loadScenario('SC-Q');
+      await store.settle();
+      const request = requests.at(-1)!;
+      assert.deepEqual(request.orders.map(({ id }) => id), ['#101', '#102', '#103'], '#104 (decaf latte) is not sent');
+      assert.equal(store.snapshot().review.excluded['#104'], '디카페인이라 원두를 바꿔야 해서');
+      assert.equal(store.snapshot().notes.find(({ kind }) => kind === 'head')!.reason, '#104 카페 라떼는 디카페인이라 원두를 바꿔야 해서 따로 만들어요.');
+    });
+
+    it('moves the anchor to the next order to make when #1 was already made together', async () => {
+      const requests: AiGroupRequest[] = [];
+      let calls = 0;
+      const store = fifoStore(async (request) => { requests.push(request); calls += 1; return group(calls === 1 ? { '#101': 1, '#104': 1 } : {}); });
+      await store.settle();
+      store.updateOrderStatus('#101', 'complete');
+      store.updateOrderStatus('#102', 'complete');
+      store.updateOrderStatus('#103', 'complete');
+      await store.settle();
+      assert.equal(find(store, '#104').made, true);
+      assert.equal(requests.at(-1)!.anchor, '#105', '#104 only needs packing, so #105 is the anchor');
+      assert.ok(!requests.at(-1)!.orders.some(({ id }) => id === '#104'), 'a made order is not compared');
+      const head = store.snapshot().notes.find(({ kind }) => kind === 'head')!;
+      assert.equal(head.text, '#104 카페 라떼 2잔은 앞에서 같이 만들어 뒀어요. 포장만 하면 돼요.');
+      assert.match(head.detail!, /^다음은 #105 아이스 아메리카노 1잔 차례예요\./);
     });
 
     it('writes the #1 card: #1\'s menus first, then which of 2-4 are made together', async () => {
@@ -436,18 +471,27 @@ describe('OrderStore with aiserver', () => {
       await store.settle();
       const notes = store.snapshot().notes;
       const head = notes.find(({ kind }) => kind === 'head')!;
-      assert.match(head.text, /^#101 카페 라떼 1잔$/);
-      assert.match(head.detail!, /^같이 만들어요 — #104 카페 라떼 2잔 \(합쳐서 카페 라떼 3잔\)$/);
+      assert.equal(head.text, '#101 카페 라떼 1잔을 만들 때 #104 카페 라떼 2잔도 같이 만드세요.');
+      assert.equal(head.detail, '같은 메뉴라 한 번에 만들면 돼요.', 'why they are made together, in plain words');
+      assert.ok(!Object.values(store.snapshot().notes).some((note) => [note.text, note.detail, note.reason, note.zoro].some((t) => t?.includes('·'))), 'no middle dots');
       assert.deepEqual(head.order_ids, ['#101', '#104']);
-      const next = notes.find(({ kind }) => kind === 'next')!;
-      assert.deepEqual(next.order_ids, ['#102', '#103'], 'a group without #1 is only announced');
-      assert.match(next.text, /^#102 · #103도 같이 만들면 좋아요/);
+      assert.deepEqual(Object.keys(store.snapshot().review.groups).sort(), ['#101', '#104'], 'a group of 2-4 without #1 is not shown');
+    });
+
+    it('says Zoro is still looking while the answer is pending, not that nothing matches', async () => {
+      let release: () => void = () => {};
+      const store = fifoStore(async () => { await new Promise<void>((resolve) => { release = resolve; }); return group({}); });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(store.snapshot().notes.find(({ kind }) => kind === 'head')!.detail, 'Zoro가 같이 만들 주문을 찾고 있어요.');
+      release();
+      await store.settle();
+      assert.equal(store.snapshot().notes.find(({ kind }) => kind === 'head')!.detail, '같이 만들 주문은 없어요.');
     });
 
     it('says there is nothing to make together when #1 is alone', async () => {
       const store = fifoStore(async () => group({}));
       await store.settle();
-      assert.equal(store.snapshot().notes.find(({ kind }) => kind === 'head')!.detail, '같이 만들 주문이 없어요');
+      assert.equal(store.snapshot().notes.find(({ kind }) => kind === 'head')!.detail, '같이 만들 주문은 없어요.');
     });
 
     it('completing #1 (the top button and the card button are the same call) strikes its companions and re-compares the new top 4', async () => {
@@ -465,8 +509,8 @@ describe('OrderStore with aiserver', () => {
       store.updateOrderStatus('#103', 'complete');
       await store.settle();
       const now = store.snapshot().notes.find(({ kind }) => kind === 'head')!;
-      assert.match(now.text, /^#104/);
-      assert.equal(now.detail, '앞 주문과 같이 만들어 뒀어요 — 포장만 하면 돼요');
+      assert.equal(now.text, '#104 카페 라떼 2잔은 앞에서 같이 만들어 뒀어요. 포장만 하면 돼요.');
+      assert.match(now.detail!, /^다음은 #105 /);
     });
 
     it('does not strike anything when a non-#1 order is completed first', async () => {
@@ -483,19 +527,83 @@ describe('OrderStore with aiserver', () => {
       assert.ok(store.snapshot().board.every(({ made }) => !made));
     });
 
-    it('announces a takeout dessert cup by rule and completes it from the card', async () => {
-      const store = fifoStore();
+    describe('slot 8 quick lane (desserts served during hands-free steps)', () => {
+      const laneStore = (groupOrders?: (request: AiGroupRequest) => Promise<AiResult<AiGroupResult>>) =>
+        new OrderStore({ catalog: menuCatalog, config: { ...fifoConfig, quickLane: true }, decideDelayMs: 0, ai: { ...fakeAi({ groupOrders }), pickNext: async () => { throw new Error('no slot 4 pick in FIFO'); } } });
+      const zones = (store: OrderStore) => store.snapshot().board.map(({ order_id: id, slot, zone }) => `${slot}:${id}:${zone}`);
+
+      it('keeps FIFO in slots 1-7 and leaves slot 8 for quick orders only', async () => {
+        const store = laneStore();
+        await store.settle();
+        assert.deepEqual(zones(store), ['1:#101:locked', '2:#102:locked', '3:#103:locked', '4:#104:locked', '5:#105:flexible', '6:#106:flexible', '7:#107:flexible', '8:#108:queue', '9:#109:queue', '10:#110:queue']);
+        const lane = store.snapshot().quick_lane;
+        assert.deepEqual({ enabled: lane.enabled, order_id: lane.order_id }, { enabled: true, order_id: undefined }, 'no dessert → slot 8 stays empty');
+      });
+
+      it('pulls the first dine-in/takeout dessert from beyond the visible board into slot 8 and shows it as ready during #1\'s shot extraction', async () => {
+        const store = laneStore();
+        store.loadScenario('SC-Q');
+        await store.settle();
+        const snapshot = store.snapshot();
+        const lane = snapshot.board.find(({ zone }) => zone === 'quick')!;
+        assert.deepEqual({ id: lane.order_id, slot: lane.slot }, { id: '#110', slot: 8 }, '#110 tiramisu was 10th (off screen); #108 ice cream is delivery and skipped');
+        assert.deepEqual(snapshot.board.filter(({ zone }) => zone === 'queue').map(({ order_id: id, slot }) => `${slot}:${id}`), ['9:#108', '10:#109'], 'off-screen numbers start after slot 8');
+        assert.deepEqual(snapshot.board.filter(({ zone }) => zone === 'flexible').map(({ order_id: id }) => id), ['#105', '#106', '#107']);
+        assert.deepEqual({ ready: snapshot.quick_lane.ready, position: snapshot.quick_lane.fifo_position, hands: snapshot.quick_lane.hands_sec, idle: snapshot.quick_lane.idle },
+          { ready: true, position: 10, hands: 18, idle: { order_id: '#101', sec: 30, label: '샷 추출' } });
+        const note = snapshot.notes.find(({ kind }) => kind === 'quick')!;
+        assert.equal(note.text, '#101 샷이 내려가는 30초 동안 손이 비어요.');
+        assert.equal(note.detail, '그동안 #110 티라미수 1개를 먼저 내주세요.');
+        assert.equal(note.reason, '원래 순서는 10번째라 화면에 안 보이지만 18초면 끝나서 먼저 내요.');
+        assert.ok(lane.eta_seconds! < find(store, '#105').eta_seconds!, 'the customer sees a short wait instead of a FIFO wait');
+      });
+
+      it('waits when the current #1 job has no hands-free step long enough', async () => {
+        const store = laneStore();
+        store.loadScenario('empty');
+        store.createOrder({ channel: 'dine-in', source: 'kiosk', menu_items: [{ menu: 'cold_brew', qty: 1 }] });
+        for (let i = 0; i < 4; i += 1) store.createOrder({ channel: 'dine-in', source: 'kiosk', menu_items: [{ menu: 'lemon_ade', qty: 1 }] });
+        store.createOrder({ channel: 'takeout', source: 'kiosk', menu_items: [{ menu: 'ice_cream_vanilla', qty: 1 }] });
+        await store.settle();
+        const lane = store.snapshot().quick_lane;
+        assert.equal(lane.order_id, '#106');
+        assert.equal(lane.ready, false, 'cold brew has no machine step');
+        const note = store.snapshot().notes.find(({ kind }) => kind === 'quick')!;
+        assert.equal(note.text, '#106 바닐라 아이스크림 1개는 손이 빌 때 먼저 내주세요.');
+        assert.equal(note.detail, '지금 만드는 주문에는 기다리는 단계가 없어요.');
+      });
+
+      it('serves the quick order early, records it, and brings up the next dessert', async () => {
+        const store = laneStore();
+        store.loadScenario('SC-Q');
+        await store.settle();
+        await store.runTrigger('SC-Q', 0);
+        assert.deepEqual(store.handleNote('quick:#111'), { error: '이미 처리된 알림이에요.', status: 404 }, 'only the order in slot 8 can be served from the card');
+        assert.deepEqual(store.handleNote('quick:#110'), { ok: true });
+        assert.ok('error' in store.handleNote('head:#101'), 'the #1 card has no separate button; it uses the order complete call');
+        const snapshot = store.snapshot();
+        const served = snapshot.history.find(({ order_id: id }) => id === '#110')!;
+        assert.deepEqual({ status: served.status, early: served.served_early }, { status: 'done', early: true });
+        assert.deepEqual(snapshot.quick_lane.served.map(({ order_id: id, text }) => `${id} ${text}`), ['#110 #110 티라미수 1개']);
+        assert.equal(snapshot.quick_lane.order_id, '#111', 'the takeout ice cream comes up next');
+        assert.deepEqual(boardIds(store).slice(0, 4), ['#101', '#102', '#103', '#104'], 'FIFO slots did not move');
+      });
+
+      it('is off without quickLane: slot 8 is a normal FIFO slot', async () => {
+        const store = fifoStore();
+        store.loadScenario('SC-Q');
+        await store.settle();
+        assert.equal(store.snapshot().quick_lane.enabled, false);
+        assert.ok(!store.snapshot().board.some(({ zone }) => zone === 'quick'));
+        assert.deepEqual(store.snapshot().notes.filter(({ kind }) => kind === 'quick'), []);
+      });
+    });
+
+    it('stays connected when a Zoro grouping answer lands while /ai/decide is still running', async () => {
+      const slowDecide = async (state: AiStoreState) => { await new Promise((resolve) => setTimeout(resolve, 20)); return noTips(state); };
+      const store = new OrderStore({ catalog: menuCatalog, config: fifoConfig, decideDelayMs: 0, ai: { ...fakeAi({ decide: slowDecide, groupOrders: async () => { await new Promise((resolve) => setTimeout(resolve, 5)); return group({}); } }) } });
       await store.settle();
-      store.createOrder({ channel: 'takeout', source: 'kiosk', menu_items: [{ menu: 'ice_cream_vanilla', qty: 1 }] });
-      store.createOrder({ channel: 'takeout', source: 'kiosk', menu_items: [{ menu: 'ice_cream_vanilla', qty: 2 }] });
-      store.createOrder({ channel: 'dine-in', source: 'kiosk', menu_items: [{ menu: 'ice_cream_choco', qty: 1 }] });
-      const quick = store.snapshot().notes.filter(({ kind }) => kind === 'quick');
-      assert.deepEqual(quick.map(({ order_ids: ids }) => ids), [['#111']], 'only one takeout dessert cup');
-      assert.match(quick[0].text, /^#111 .*아이스크림 1잔\(포장\)/);
-      assert.deepEqual(store.handleNote(quick[0].id), { ok: true });
-      assert.ok('error' in store.handleNote('head:#101'), 'the #1 card has no separate button; it uses the order complete call');
-      assert.equal(store.snapshot().history.find(({ order_id: id }) => id === '#111')?.status, 'done');
-      assert.deepEqual(store.snapshot().notes.filter(({ kind }) => kind === 'quick'), []);
+      assert.equal(store.snapshot().decision.ai_status, 'connected', 'the stale decide is asked again instead of leaving the badge on unavailable');
     });
 
     it('reports unavailable when aiserver cannot answer and off when there is none', async () => {

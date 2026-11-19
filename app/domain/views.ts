@@ -1,7 +1,7 @@
-import type { BoardReview, MenuGroup, Note, Channel, Decision, OrderSource, OrderStatus, RiderStatus, Signals, Slot4Info, StoreEvent, Tip, WorkStep } from './types.ts';
+import type { BoardReview, MenuGroup, Note, Channel, Decision, OrderSource, OrderStatus, QuickLane, RiderStatus, Signals, Slot4Info, StoreEvent, Tip, WorkStep } from './types.ts';
 
 // 서버가 화면으로 보내는 스냅샷. 화면은 메뉴 원본(recipe.json) 없이 이 값만으로 그린다.
-export type OrderItemView = { name: string; qty: number; options: string[]; group?: MenuGroup };
+export type OrderItemView = { name: string; qty: number; unit: string; options: string[]; group?: MenuGroup };
 
 export type OrderView = {
   order_id: string;
@@ -28,8 +28,9 @@ export type OrderView = {
   made?: boolean;
   prepped?: boolean;
   slot?: number;
-  // locked: 1~4번 고정, flexible: 5~8번 대기, queue: 화면 밖 대기열
-  zone?: 'locked' | 'flexible' | 'queue';
+  // locked: 1~4번 고정, flexible: 5~8번 대기(빠른 주문 칸을 쓰면 5~7번), quick: 8번 빠른 주문 칸, queue: 화면 밖 대기열
+  zone?: 'locked' | 'flexible' | 'quick' | 'queue';
+  served_early?: boolean;
   blocked_reason?: string;
   eta_seconds?: number;
 };
@@ -56,8 +57,10 @@ export type BoardSnapshot = {
   work_window: WorkStep[];
   // Zoro가 맨 앞 4건에서 묶은 주문(하이라이트 색)
   review: BoardReview;
-  // 아래 자연어 칸 카드(같이 처리해요, 빠른 주문 팝업)
+  // 아래 일머리 팁 칸 카드(1번 기준 같이 만들기, 빠른 주문)
   notes: Note[];
+  // 8번 빠른 주문 칸
+  quick_lane: QuickLane;
 };
 
 export const channelLabels: Record<Channel, string> = { 'dine-in': '매장', takeout: '포장', delivery: '배달' };

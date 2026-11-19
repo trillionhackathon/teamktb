@@ -1,5 +1,5 @@
 import { toAiStoreState, toPickRequest } from '../ai/contract.ts';
-import { boardEtas, remainingSeconds, rulePickNext, type BoardConfig } from '../domain/board.ts';
+import { boardEtas, remainingSeconds, rulePickNext, workLeftSeconds, type BoardConfig } from '../domain/board.ts';
 import { ownerRules as defaultOwnerRules } from '../domain/catalog-data.ts';
 import { interpretEvent } from '../domain/events.ts';
 import { buildFacts, lockedLine, type Fact } from '../domain/facts.ts';
@@ -7,11 +7,14 @@ import {
   findDrink,
   lineName, lineUsesEquipment, maxOrderCups, normalizeLine, optionNames, orderPrice, orderWorkSeconds, stockNeeded, type MenuCatalog,
 } from '../domain/menu.ts';
-import { buildGroupRequest, groupViews, headNote, nextText, quickText } from '../domain/review.ts';
+import {
+  apartText, blockingReason, buildGroupRequest, groupViews, handsSeconds, headNote, idleWindow, isQuickDessert, lineUnit, quickLaneText, zoroText,
+} from '../domain/review.ts';
 import { defaultScenarioId, findScenario, scenarios, type SignalPatch } from '../domain/scenarios.ts';
 import type {
   BoardReview,
   Note,
+  QuickLane,
   Channel, Decision, EventCategory, MenuItemInput, Order, OrderLine, OrderSource, OwnerRules, Signals, Slot4Info, StoreEvent, Tip, WorkStep,
 } from '../domain/types.ts';
 import { channelLabels, riderLabels, sourceLabels, type BoardSnapshot, type OrderView } from '../domain/views.ts';
@@ -25,6 +28,11 @@ import type { AiClient } from './aiserver.ts';
 // 4번은 aiserver /ai/pick-next(Zoro)가 고른다. 답이 올 때까지 4번은 비워 두고("Zoro 고르는 중"),
 // 룰 선택은 Zoro가 답하지 못할 때(aiserver 없음·타임아웃·오류)와 후보가 하나뿐일 때만 쓴다.
 // 새 주문은 맨 뒤에 붙기만 하고, 요청사항·매장 이벤트는 카드 내용만 바꾼다.
+//
+// fifo(data/cafe_db.json kds_board.fifo)면 위 4번 고르기를 끄고 들어온 순서로만 채운다. 이때 Zoro는
+// 1번(기준)과 비슷한 2~4번만 판단해(/ai/group-orders anchor) 같은 색으로 묶고, 아래 일머리 팁 칸에 같이 만들 주문을 적는다.
+// quickLane이면 8번 칸은 빠른 주문 전용이다. FIFO는 1~7번이고, 8번에는 1~4번 밖(화면 밖 포함)의 첫 디저트 전용 주문을
+// 띄워 1번 레시피의 손 비는 시간(샷 추출 등)에 먼저 내보낸다. 숫자 비교라 코드 규칙이며 Zoro에 묻지 않는다.
 
 export type CreateOrderInput = {
   request_id?: string;
@@ -51,8 +59,10 @@ type State = {
   scenarioId: string;
   slot4?: Slot4Info;
   workWindow: WorkStep[];
-  // 마지막 Zoro 묶기. ok가 false면 aiserver가 답하지 못한 것이다.
-  review?: { ok: boolean; groups: Record<string, number> };
+  // 마지막 Zoro 묶기. ok가 false면 aiserver가 답하지 못한 것이다. key는 물을 때의 맨 앞 4건과 기준 주문이다.
+  review?: { key: string; ok: boolean; anchor?: string; groups: Record<string, number>; scores: Record<string, number> };
+  // 빠른 주문 칸에서 먼저 내보낸 주문(최근 것부터)
+  quickServed: QuickLane['served'];
 };
 
 type Deps = { catalog: MenuCatalog; config: BoardConfig; ai?: AiClient; now?: () => number; decideDelayMs?: number; ownerRules?: OwnerRules };
@@ -60,6 +70,8 @@ type Deps = { catalog: MenuCatalog; config: BoardConfig; ai?: AiClient; now?: ()
 const channels: Channel[] = ['dine-in', 'takeout', 'delivery'];
 const sources: OrderSource[] = ['kiosk', 'delivery_app', 'demo', 'scenario'];
 const equipmentLabels: Record<string, string> = { blender: '블렌더', espresso_machine: '에스프레소 머신', steam_wand: '스팀 완드' };
+// aiserver app/review.py GROUP_THRESHOLD와 같은 값. 화면에서 Zoro 점수를 읽는 기준으로만 쓴다.
+const groupThreshold = 0.5;
 
 function defaultSignals(): Signals {
   return {
@@ -101,9 +113,12 @@ export class OrderStore {
   }
 
   // 테스트와 시나리오 재생에서 AI 판단(팁, 4번 고르기)이 끝날 때까지 기다린다.
+  // 판단이 끝나며 다음 판단을 예약할 수 있어(늦은 decide 다시 묻기) 예약이 남지 않을 때까지 기다린다.
   async settle(): Promise<void> {
-    while (this.decideTimer !== undefined || this.reviewTimer !== undefined) await new Promise((resolve) => setTimeout(resolve, 5));
-    await Promise.all([this.pending, this.pickPending, this.reviewPending]);
+    do {
+      while (this.decideTimer !== undefined || this.reviewTimer !== undefined) await new Promise((resolve) => setTimeout(resolve, 5));
+      await Promise.all([this.pending, this.pickPending, this.reviewPending]);
+    } while (this.decideTimer !== undefined || this.reviewTimer !== undefined);
   }
 
   loadScenario(id: string): StoreError | undefined {
@@ -149,6 +164,7 @@ export class OrderStore {
       decision: { state_version: 0, source: 'rule', fallback: true, ai_status: this.deps.ai ? 'unavailable' : 'disabled', decided_at: new Date(now).toISOString() },
       scenarioId: scenario.id,
       workWindow: [],
+      quickServed: [],
     };
     this.reorderWaiting();
     this.commit();
@@ -178,7 +194,7 @@ export class OrderStore {
     const existing = input.request_id ? this.state.requestIds.get(input.request_id) : undefined;
     if (existing) {
       const order = this.state.orders.get(existing)!;
-      return { order: this.view(order), wait_seconds: boardEtas(this.state.board, this.state.orders, this.now()).get(existing) ?? 0, duplicate: true };
+      return { order: this.view(order), wait_seconds: this.etas(this.now()).get(existing) ?? 0, duplicate: true };
     }
     if (!channels.includes(input.channel)) return { error: `channel은 ${channels.join(', ')} 중 하나여야 해요.`, status: 400 };
     if (!sources.includes(input.source)) return { error: `source는 ${sources.join(', ')} 중 하나여야 해요.`, status: 400 };
@@ -226,7 +242,7 @@ export class OrderStore {
     inventory.coffee_beans_shots_left -= needed.espresso_shot;
     inventory.strawberry_servings_left = Math.round((inventory.strawberry_servings_left - needed.strawberry_servings) * 100) / 100;
     this.commit();
-    return { order: this.view(order), wait_seconds: boardEtas(this.state.board, this.state.orders, this.now()).get(orderId) ?? 0, duplicate: false };
+    return { order: this.view(order), wait_seconds: this.etas(this.now()).get(orderId) ?? 0, duplicate: false };
   }
 
   updateOrderStatus(orderId: string, action: 'start' | 'complete'): { order: OrderView } | StoreError {
@@ -334,19 +350,29 @@ export class OrderStore {
   snapshot(): BoardSnapshot {
     const { config } = this.deps;
     const now = this.now();
-    const etas = boardEtas(this.state.board, this.state.orders, now);
+    const etas = this.etas(now);
     // Zoro가 4번을 고르는 동안 4번 칸은 비어 있고, 대기 주문은 5번부터 보인다.
+    // 빠른 주문 칸을 쓰면 FIFO는 1~7번이고, 8번에는 빠른 주문 하나만 들어간다(나머지는 들어온 순서 그대로).
     const locked = this.lockedShown();
     const gap = config.lockedCount - locked;
-    const board = this.state.board.map((id, index): OrderView => {
-      const slot = index < locked ? index + 1 : index + 1 + gap;
+    const laneId = this.quickLaneId();
+    const fifoVisible = this.fifoVisibleCount();
+    const fifo = this.state.board.filter((id) => id !== laneId);
+    const board = fifo.map((id, index): OrderView => {
+      // 화면 밖 대기열 번호는 빠른 주문 칸(8번) 다음부터 센다.
+      const slot = index < locked ? index + 1 : index + 1 + gap + (laneId !== undefined && index >= fifoVisible ? 1 : 0);
       return {
         ...this.view(this.state.orders.get(id)!),
         slot,
-        zone: index < locked ? 'locked' : slot <= config.visibleCount ? 'flexible' : 'queue',
+        zone: index < locked ? 'locked' : slot <= fifoVisible ? 'flexible' : 'queue',
         eta_seconds: etas.get(id),
       };
     });
+    if (laneId) {
+      const lane: OrderView = { ...this.view(this.state.orders.get(laneId)!), slot: config.visibleCount, zone: 'quick', eta_seconds: etas.get(laneId) };
+      const at = board.findIndex(({ zone }) => zone === 'queue');
+      board.splice(at < 0 ? board.length : at, 0, lane);
+    }
     const all = [...this.state.orders.values()];
     const scenario = findScenario(this.state.scenarioId);
     const tipIds = new Set(this.state.ruleTips.map(({ id }) => id));
@@ -374,7 +400,22 @@ export class OrderStore {
       work_window: structuredClone(this.state.workWindow),
       review: this.reviewView(board),
       notes: this.noteViews(board),
+      quick_lane: this.quickLaneView(),
     };
+  }
+
+  // 예상 대기시간. FIFO 순서로 앞 주문의 남은 일을 더한다. 빠른 주문 칸의 주문은 1번 작업이 끝나기 전(손 비는 시간)이나
+  // 끝난 직후에 내보내므로 1번의 남은 일 + 자기 손 시간으로 본다. 빠른 주문은 손 비는 시간에 만들어서 다른 주문 시간에 더하지 않는다.
+  private etas(now: number): Map<string, number> {
+    const laneId = this.quickLaneId();
+    const etas = boardEtas(this.state.board.filter((id) => id !== laneId), this.state.orders, now);
+    if (laneId) {
+      const lane = this.quickLaneInfo(laneId);
+      const head = this.state.board[0] ? this.state.orders.get(this.state.board[0]) : undefined;
+      const before = lane.ready || !head ? 0 : workLeftSeconds(head, now);
+      etas.set(laneId, Math.round(before + lane.hands));
+    }
+    return etas;
   }
 
   availability(): Record<string, string> {
@@ -614,7 +655,7 @@ export class OrderStore {
       source: order.source,
       source_label: sourceLabels[order.source],
       status: order.status,
-      items: order.menu_items.map((line) => ({ name: lineName(catalog, line), qty: line.qty, options: optionNames(catalog, line.options), group: findDrink(catalog, line.menu)?.group })),
+      items: order.menu_items.map((line) => ({ name: lineName(catalog, line), qty: line.qty, unit: lineUnit(catalog, line), options: optionNames(catalog, line.options), group: findDrink(catalog, line.menu)?.group })),
       request_note: order.request_note,
       rider_status: order.rider_status,
       rider_label: order.rider_status ? riderLabels[order.rider_status] : undefined,
@@ -625,6 +666,7 @@ export class OrderStore {
       overtaken: order.overtaken ?? 0,
       made: order.made ?? false,
       prepped: order.prepped ?? false,
+      served_early: order.served_early ?? false,
       received_at: order.received_at,
       started_at: order.started_at,
       completed_at: order.completed_at,
@@ -661,6 +703,10 @@ export class OrderStore {
     this.notify();
     this.scheduleReview();
     if (!this.deps.ai || options.decide === false) return;
+    this.scheduleDecide();
+  }
+
+  private scheduleDecide(): void {
     if (this.decideTimer) clearTimeout(this.decideTimer);
     this.decideTimer = setTimeout(() => {
       this.decideTimer = undefined;
@@ -676,7 +722,11 @@ export class OrderStore {
     const request = toAiStoreState(boardOrders, this.state.signals, { describe: this.describe, remainingSeconds: (order) => remainingSeconds(order, this.now()) });
     const result = await ai.decide(request);
     // 판단 중에 상태가 바뀌었으면 늦게 온 응답을 버린다. 새 상태의 판단은 이미 예약돼 있다(INV-04).
-    if (this.state.version !== version) return;
+    // 묶기 답처럼 decide를 다시 예약하지 않는 커밋이 끼어들 수 있어, 버린 뒤에는 새 상태로 한 번 더 묻는다(예약이 있으면 그것을 쓴다).
+    if (this.state.version !== version) {
+      if (!this.decideTimer) this.scheduleDecide();
+      return;
+    }
     this.state.aiTips = result.ok ? [
       ...result.data.tips.map(({ id, text, confidence, source }) => ({ id, text, confidence, source })),
       ...result.data.feed.map(({ category, text, confidence, source }, index) => ({ id: `feed-${category}-${index}`, text, confidence, source })),
@@ -693,16 +743,37 @@ export class OrderStore {
     this.commit({ decide: false });
   }
 
-  // ---- 위 4칸 묶기와 아래 자연어 칸 ----
+  // ---- 위 4칸 묶기(1번 기준)와 아래 일머리 팁 칸 ----
 
   private topIds(): string[] {
     return this.state.board.slice(0, this.deps.config.lockedCount).filter((id) => this.state.orders.get(id)?.status !== 'done');
   }
 
-  // 맨 앞 4건의 구성이 바뀔 때만 다시 묻는다. 주문이 끝나 FIFO로 4건이 새로 정해지면 다시 비교한다.
+  // 기준 주문: 위 4칸에서 먼저 만들 주문. 보통 1번이고, 1번을 앞 주문과 같이 만들어 뒀으면(포장만 남음) 그다음 주문이다.
+  // 장비 고장으로 보류된 주문은 기준이 되지 않는다.
+  private anchorId(): string | undefined {
+    return this.topIds().find((id) => {
+      const order = this.state.orders.get(id)!;
+      return !order.made && !this.isBlocked(order);
+    });
+  }
+
+  private reviewKey(): string {
+    return `${this.anchorId() ?? '-'}|${this.topIds().join(',')}`;
+  }
+
+  // 1번 기준과 2~4번 중 같이 만들 수 있는 후보(만듦·보류·디카페인 같은 옵션 막힘은 코드가 먼저 뺀다)
+  private reviewCandidates(anchor: string): string[] {
+    return this.topIds().filter((id) => {
+      const order = this.state.orders.get(id)!;
+      return id === anchor || (!order.made && !this.isBlocked(order));
+    });
+  }
+
+  // 맨 앞 4건이나 기준 주문이 바뀔 때만 다시 묻는다. 주문이 끝나 FIFO로 4건이 새로 정해지면 다시 비교한다.
   private scheduleReview(): void {
     if (!this.deps.ai) return;
-    const key = this.topIds().join(',');
+    const key = this.reviewKey();
     if (key === this.lastReviewKey) return;
     this.lastReviewKey = key;
     if (this.reviewTimer) clearTimeout(this.reviewTimer);
@@ -716,9 +787,11 @@ export class OrderStore {
     const ai = this.deps.ai;
     if (!ai) return;
     const seq = ++this.reviewSeq;
-    const request = buildGroupRequest(this.topIds(), this.state.orders, this.deps.catalog);
-    if (request.orders.length < 2) {
-      this.state.review = { ok: true, groups: {} };
+    const key = this.reviewKey();
+    const anchor = this.anchorId();
+    const request = anchor ? buildGroupRequest(anchor, this.reviewCandidates(anchor), this.state.orders, this.deps.catalog) : undefined;
+    if (!request || request.orders.length < 2) {
+      this.state.review = { key, ok: true, anchor, groups: {}, scores: {} };
       this.commit({ decide: false });
       return;
     }
@@ -726,8 +799,14 @@ export class OrderStore {
     if (seq !== this.reviewSeq) return;   // 기다리는 사이 앞 4건이 또 바뀌었다
     if (!result.ok) console.warn(`[order-store] group-orders failed: ${result.error}`);
     const ok = result.ok && !result.data.fallback;
-    this.state.review = { ok, groups: ok ? result.data.groups : {} };
+    this.state.review = { key, ok, anchor, groups: ok ? result.data.groups : {}, scores: ok ? result.data.scores : {} };
     this.commit({ decide: false });
+  }
+
+  // 지금 보드와 같은 맨 앞 4건으로 물은 답만 쓴다. 다시 묻는 중이면 묶음을 보여 주지 않는다.
+  private currentReview(): State['review'] {
+    const review = this.state.review;
+    return review && review.key === this.reviewKey() ? review : undefined;
   }
 
   // 1번이 끝나면 1번과 같은 묶음인 2~4번은 같이 만든 것으로 본다('만듦'. 화면에서는 삭선, 남은 일은 포장뿐).
@@ -736,57 +815,116 @@ export class OrderStore {
     for (const id of this.companionsOf(headId)) this.state.orders.get(id)!.made = true;
   }
 
-  // 1번과 같은 묶음인 위 4칸 주문(아직 안 끝난 것만)
-  private companionsOf(headId: string): string[] {
-    const groups = this.state.review?.ok ? this.state.review.groups : {};
-    const n = groups[headId];
+  // 기준 주문과 같은 묶음인 위 4칸 주문(아직 안 끝난 것만)
+  private companionsOf(anchorId: string | undefined): string[] {
+    const review = this.currentReview();
+    if (!anchorId || !review?.ok || review.anchor !== anchorId) return [];
+    const n = review.groups[anchorId];
     if (n === undefined) return [];
-    return this.topIds().filter((id) => id !== headId && groups[id] === n && this.state.orders.get(id)?.status !== 'done');
+    return this.topIds().filter((id) => id !== anchorId && review.groups[id] === n && this.state.orders.get(id)?.status !== 'done');
   }
 
-  // 화면용 묶음(색). 맨 앞 주문 중 둘 이상 남은 묶음만 보낸다.
+  // 코드가 Zoro에 묻기 전에 뺀 2~4번과 이유
+  private excludedFromReview(anchor: string | undefined): Record<string, string> {
+    if (!anchor) return {};
+    const excluded: Record<string, string> = {};
+    for (const id of this.topIds()) {
+      if (id === anchor) continue;
+      const order = this.state.orders.get(id)!;
+      const blocked = this.blockedReason(order)?.replace(/으로 보류$/, '이라');   // "블렌더 고장으로 보류" → "블렌더 고장이라"
+      const why = order.made ? undefined : blocked ?? blockingReason(order, this.deps.catalog);
+      if (why) excluded[id] = why;
+    }
+    return excluded;
+  }
+
+  // 화면용 묶음(색). 기준 주문과 그 짝만 같은 색이다.
   private reviewView(board: OrderView[]): BoardReview {
-    const stored = this.state.review;
-    if (!this.deps.ai) return { status: 'off', groups: {} };
-    if (!stored) return { status: 'checking', groups: {} };
+    const anchor = this.anchorId();
+    const base = { anchor, groups: {}, scores: {}, excluded: this.excludedFromReview(anchor), threshold: groupThreshold };
+    if (!this.deps.ai) return { ...base, status: 'off' };
+    const review = this.currentReview();
+    if (!review) return { ...base, status: 'checking' };
     const top = new Set(board.filter(({ zone }) => zone === 'locked').map(({ order_id: id }) => id));
-    return { status: stored.ok ? 'ready' : 'unavailable', groups: groupViews(stored.groups, top) };
+    return { ...base, status: review.ok ? 'ready' : 'unavailable', groups: groupViews(review.anchor, review.groups, review.scores, top), scores: review.scores };
   }
 
-  // 아래 자연어 칸 카드. 1번 기준으로 1번 메뉴와 같이 만들 2~4번을 적고(head), 1번과 상관없는 묶음은 안내만(next),
-  // 포장 디저트 1잔은 룰로 알린다(quick).
+  // 아래 일머리 팁 칸 카드. 1번 기준으로 1번 메뉴와 같이 만들 2~4번을 적고(head), 8번 빠른 주문을 알린다(quick).
   private noteViews(board: OrderView[]): Note[] {
-    const colors = this.reviewView(board).groups;
+    const review = this.reviewView(board);
     const { catalog } = this.deps;
-    const top = this.topIds();
     const notes: Note[] = [];
-    const headId = top[0];
+    const headId = this.topIds()[0];
     const head = headId ? this.state.orders.get(headId) : undefined;
     if (head) {
-      const companions = this.companionsOf(headId);
-      notes.push({ id: `head:${headId}`, kind: 'head', ...headNote(head, companions, this.state.orders, catalog), order_ids: [headId, ...companions], color: colors[headId]?.color });
+      const anchor = review.anchor;
+      const companions = this.companionsOf(anchor);
+      notes.push({
+        id: `head:${headId}`,
+        kind: 'head',
+        ...headNote(head, anchor, companions, this.state.orders, catalog, review.status),
+        reason: apartText(review.scores, review.excluded, review.threshold, this.state.orders, catalog),
+        zoro: zoroText(anchor, review.scores, review.threshold),
+        order_ids: [headId, ...(anchor && anchor !== headId ? [anchor] : []), ...companions],
+        color: anchor ? review.groups[anchor]?.color : undefined,
+      });
     }
-    const groups = this.state.review?.ok ? this.state.review.groups : {};
-    const byGroup = new Map<number, string[]>();
-    for (const id of top.slice(1)) {
-      const n = groups[id];
-      if (n !== undefined && n !== groups[headId]) byGroup.set(n, [...(byGroup.get(n) ?? []), id]);
+    const laneId = this.quickLaneId();
+    if (laneId) {
+      const lane = this.quickLaneInfo(laneId);
+      const { ready, text, detail, reason } = quickLaneText(this.state.orders.get(laneId)!, lane.position, this.fifoVisibleCount(), lane.hands, lane.idle, catalog, this.state.orders);
+      notes.push({ id: `quick:${laneId}`, kind: 'quick', text, detail, reason, order_ids: [laneId], ready });
     }
-    for (const ids of byGroup.values()) {
-      if (ids.length >= 2) notes.push({ id: `next:${ids.join(',')}`, kind: 'next', text: nextText(ids, this.state.orders, catalog), order_ids: ids, color: colors[ids[0]]?.color });
-    }
-    this.state.board.forEach((id, index) => {
-      const text = quickText(this.state.orders.get(id)!, index + 1, catalog);
-      if (text) notes.push({ id: `quick:${id}`, kind: 'quick', text, order_ids: [id] });
-    });
     return notes;
   }
 
-  // 빠른 주문 카드의 "내보냈어요": 그 주문을 완료한다. (1번 카드의 완료는 위 완료 버튼과 같은 주문 완료 API를 쓴다.)
+  // ---- 8번 빠른 주문 칸 ----
+
+  // FIFO 칸 수. 빠른 주문 칸을 쓰면 마지막 칸(8번)을 비워 둔다.
+  private fifoVisibleCount(): number {
+    const { config } = this.deps;
+    return config.visibleCount - (config.fifo && config.quickLane ? 1 : 0);
+  }
+
+  // 8번에 띄울 주문: 1~4번 밖(5~7번, 화면 밖 대기열)에서 가장 먼저 들어온 매장·포장 디저트 전용 주문. 보드는 들어온 순서다.
+  private quickLaneId(): string | undefined {
+    const { config } = this.deps;
+    if (!config.fifo || !config.quickLane) return undefined;
+    return this.state.board.slice(config.lockedCount).find((id) => {
+      const order = this.state.orders.get(id)!;
+      return isQuickDessert(order, this.deps.catalog) && !this.isBlocked(order);
+    });
+  }
+
+  // 손 비는 시간: 지금 만드는 작업(기준 주문 + 같이 만들 주문)의 레시피에서 손이 비는 가장 긴 단계
+  private quickLaneInfo(laneId: string) {
+    const order = this.state.orders.get(laneId)!;
+    const anchor = this.anchorId();
+    const idle = anchor ? idleWindow([anchor, ...this.companionsOf(anchor)], this.state.orders, this.deps.catalog) : undefined;
+    const hands = handsSeconds(order, this.deps.catalog);
+    return { idle, hands, ready: !!idle && idle.sec >= hands, position: this.state.board.indexOf(laneId) + 1 };
+  }
+
+  private quickLaneView(): QuickLane {
+    const { config } = this.deps;
+    const enabled = !!(config.fifo && config.quickLane);
+    const laneId = this.quickLaneId();
+    const served = structuredClone(this.state.quickServed);
+    if (!laneId) return { enabled, ready: false, served };
+    const lane = this.quickLaneInfo(laneId);
+    return { enabled, order_id: laneId, ready: lane.ready, fifo_position: lane.position, hands_sec: lane.hands, idle: lane.idle, served };
+  }
+
+  // 빠른 주문 카드(8번 칸과 아래 팁 칸)의 "내보냈어요": 그 주문을 완료한다. (1번 카드의 완료는 위 완료 버튼과 같은 주문 완료 API를 쓴다.)
   handleNote(noteId: string): { ok: true } | StoreError {
     if (!noteId.startsWith('quick:')) return { error: '이 카드는 버튼으로 처리하지 않아요.', status: 400 };
     const id = noteId.slice('quick:'.length);
-    if (!this.noteViews(this.snapshot().board).some((note) => note.id === noteId)) return { error: '이미 처리된 알림이에요.', status: 404 };
+    if (this.quickLaneId() !== id) return { error: '이미 처리된 알림이에요.', status: 404 };
+    const order = this.state.orders.get(id)!;
+    const text = `${id} ${order.menu_items.map((line) => `${lineName(this.deps.catalog, line)} ${line.qty}${lineUnit(this.deps.catalog, line)}`).join(', ')}`;
+    // 차례보다 먼저 나간 기록을 남기고 완료한다. 완료가 커밋하면서 8번 칸에 다음 디저트가 올라온다.
+    order.served_early = true;
+    this.state.quickServed = [{ order_id: id, text, at: new Date(this.now()).toISOString() }, ...this.state.quickServed].slice(0, 3);
     const result = this.updateOrderStatus(id, 'complete');
     return 'error' in result ? result : { ok: true };
   }
