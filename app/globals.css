@@ -211,6 +211,16 @@ h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.06; letter-spacing: -.0
 .order-detail .card-items li { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .order-detail .item-name, .order-detail .card-flag { overflow: visible; overflow-wrap: anywhere; white-space: pre-wrap; }
 .order-detail .item-options { overflow-wrap: anywhere; }
+/* 상세 창의 요청사항: 문장마다 칸, Zoro가 읽은 뜻과 확신, 카드에 한 일, ⚠와 버튼 */
+.note-detail-status { color: var(--muted); font-size: 13px; }
+.note-sentences { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.note-sentences li { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; }
+.note-sentences li.needs-check { border-color: #e0b04a; background: #fff8e6; }
+.note-field { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 6px; background: var(--line); color: var(--text); font-size: 12px; font-weight: 700; }
+.note-sentence-text { font-weight: 650; overflow-wrap: anywhere; }
+.note-sentence-zoro, .note-sentence-result { color: var(--muted); font-size: 13px; }
+.note-sentence-check { color: #8a5a00; font-size: 13px; font-weight: 650; }
+.note-sentence-actions { display: flex; gap: 8px; margin-top: 4px; }
 .order-detail .card-flags, .order-detail .card-reason { margin-top: 12px; }
 
 @media (prefers-reduced-motion: reduce) { .card-body, .tip-line { animation: none; } }

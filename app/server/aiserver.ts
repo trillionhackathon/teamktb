@@ -1,5 +1,5 @@
 import {
-  parseDecideResult, parseIntentResult, parsePickResult, parseGroupResult, type AiGroupRequest, type AiGroupResult, type AiPickRequest, type AiPickResult, type AiStoreState, type DecideResult, type IntentResult,
+  parseDecideResult, parseIntentResult, parsePickResult, parseGroupResult, parseNoteResult, type AiGroupRequest, type AiGroupResult, type AiNoteRequest, type AiNoteResult, type AiPickRequest, type AiPickResult, type AiStoreState, type DecideResult, type IntentResult,
 } from '../ai/contract.ts';
 
 // Next.js 서버에서 aiserver(FastAPI)를 호출한다. 브라우저는 aiserver 주소를 모른다.
@@ -11,6 +11,8 @@ export type AiClient = {
   pickNext: (request: AiPickRequest) => Promise<AiResult<AiPickResult>>;
   // 맨 앞 4건 중 비슷한 주문 묶기. 메뉴 짝 질문이 처음엔 여러 번 가서 다른 호출보다 오래 기다린다.
   groupOrders: (request: AiGroupRequest) => Promise<AiResult<AiGroupResult>>;
+  // 배달 요청사항 읽기. 문장끼리 병렬로 묻는다. 주문 접수를 막지 않으니 다른 호출보다 조금 길게 기다린다.
+  readNote: (request: AiNoteRequest) => Promise<AiResult<AiNoteResult>>;
 };
 
 async function post<T>(baseUrl: string, path: string, body: unknown, timeoutMs: number, parse: (value: unknown) => T | undefined): Promise<AiResult<T>> {
@@ -40,12 +42,13 @@ async function post<T>(baseUrl: string, path: string, body: unknown, timeoutMs: 
   return { ok: true, data };
 }
 
-export function createAiClient(baseUrl: string, timeoutMs = 1500, groupTimeoutMs = 15_000): AiClient {
+export function createAiClient(baseUrl: string, timeoutMs = 1500, groupTimeoutMs = 15_000, noteTimeoutMs = 5000): AiClient {
   return {
     decide: (state) => post(baseUrl, '/ai/decide', state, timeoutMs, parseDecideResult),
     classify: (text) => post(baseUrl, '/ai/operator-input', { text }, timeoutMs, parseIntentResult),
     pickNext: (request) => post(baseUrl, '/ai/pick-next', request, timeoutMs, parsePickResult),
     groupOrders: (request) => post(baseUrl, '/ai/group-orders', request, groupTimeoutMs, parseGroupResult),
+    readNote: (request) => post(baseUrl, '/ai/read-note', request, noteTimeoutMs, parseNoteResult),
   };
 }
 

@@ -20,6 +20,7 @@ export default function DeliveryApp({ catalog, initial }: { catalog: MenuCatalog
   const [size, setSize] = useState<SizeId>('R');
   const [qty, setQty] = useState('1');
   const [note, setNote] = useState('');
+  const [riderNote, setRiderNote] = useState('');
   const [submission, setSubmission] = useState<Submission>();
   const [requestId, setRequestId] = useState(() => createRequestId('delivery'));
   const [riderResult, setRiderResult] = useState<{ text: string; error: boolean }>();
@@ -45,6 +46,7 @@ export default function DeliveryApp({ catalog, initial }: { catalog: MenuCatalog
         source: 'delivery_app',
         menu_items: [{ menu: menuId, qty: cups, size: drink.sizes.includes(size) ? size : 'R' }],
         request_note: note.trim() || undefined,
+        rider_note: riderNote.trim() || undefined,
       },
     });
     setSubmission(result.ok ? { phase: 'accepted', order: result.data.order, waitSeconds: result.data.wait_seconds } : { phase: 'failed', error: result.error });
@@ -55,6 +57,7 @@ export default function DeliveryApp({ catalog, initial }: { catalog: MenuCatalog
     setRequestId(createRequestId('delivery'));
     setQty('1');
     setNote('');
+    setRiderNote('');
   }
 
   async function sendRiderMessage(order: OrderView, text: string) {
@@ -96,8 +99,11 @@ export default function DeliveryApp({ catalog, initial }: { catalog: MenuCatalog
                 <input type="number" min={1} max={maxLineQuantity} required value={qty} onChange={(e) => setQty(e.target.value)} />
               </label>
             </div>
-            <label>요청사항
+            <label>가게 요청사항
               <textarea value={note} maxLength={200} rows={3} onChange={(e) => setNote(e.target.value)} placeholder="예: 얼음은 반만 넣어 주세요" />
+            </label>
+            <label>배달 요청사항 (라이더)
+              <textarea value={riderNote} maxLength={200} rows={2} onChange={(e) => setRiderNote(e.target.value)} placeholder="예: 문 앞에 두고 벨은 누르지 말아 주세요" />
             </label>
             <p className="delivery-total">합계 {formatPrice(unitPrice(catalog, { menu: menuId, size: drink.sizes.includes(size) ? size : 'R', options: [] }) * (Number.isInteger(cups) ? cups : 0))}</p>
             <button className="action-button" type="submit" disabled={Boolean(unavailable)}>{unavailable ? unavailable : '배달 주문 보내기'}</button>

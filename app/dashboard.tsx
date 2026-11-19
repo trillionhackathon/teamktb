@@ -112,11 +112,29 @@ function OrderLines({ order }: { order: OrderView }) {
         <li key={index} className={item.made ? 'item-made' : undefined}>
           <span className="item-name">{item.name}</span>
           <span className="item-qty">{item.qty}{item.unit}</span>
-          {item.options.length > 0 && <span className="item-options">{item.options.join(', ')}</span>}
+          {item.options.length > 0 && <span className="item-options">{item.options.map((option) => (item.note_options?.includes(option) ? `${option}(메모)` : option)).join(', ')}</span>}
         </li>
       ))}
     </ul>
   );
+}
+
+type Flag = { text: string; tone: string };
+
+// 요청사항 메모 줄. 카드가 작아서 꼭 볼 것만 띄운다(전체는 상세 창).
+// 1) 배달 칸에 적힌 가게 요청을 반영했으면 "배달 칸 메모 반영: 1잔 디카페인" 2) ⚠ 문구(같은 문구는 한 번) 3) 반영하지 않은 메모 원문.
+// 가게 칸 메모로 붙인 옵션은 메뉴 줄에 "(메모)"로 보이므로 따로 쓰지 않는다. 배달 칸의 가게 일 아닌 문장(문 앞에 두세요 등)은 띄우지 않는다.
+function noteFlags(order: OrderView): Flag[] {
+  const note = order.note_read;
+  if (!note) return order.request_note ? [{ text: `메모 ${order.request_note}`, tone: 'muted' }] : [];
+  if (note.status === 'checking') return [{ text: 'Zoro가 메모를 읽는 중', tone: 'muted' }];
+  const shown = note.sentences.filter(({ hidden }) => !hidden);
+  const warnings = [...new Set(shown.filter(({ check, resolved }) => check && !resolved).flatMap(({ check }) => check!.split(' · ')))];
+  return [
+    ...shown.filter(({ applied, moved }) => applied && moved).map(({ label }) => ({ text: label, tone: 'ok' })),
+    ...warnings.map((text) => ({ text: `⚠ ${text}`, tone: 'warn' })),
+    ...shown.filter(({ applied }) => !applied).map(({ label }) => ({ text: label, tone: 'muted' })),
+  ];
 }
 
 function OrderFlags({ order }: { order: OrderView }) {
@@ -127,10 +145,10 @@ function OrderFlags({ order }: { order: OrderView }) {
     order.rider_status === 'arrived' && { text: '라이더 도착', tone: 'danger' },
     order.needs_confirmation && { text: '⚠ 확인 필요', tone: 'warn' },
     (order.overtaken ?? 0) > 0 && { text: `${order.overtaken}번 밀림`, tone: 'warn' },
-    order.request_note && { text: `메모 ${order.request_note}`, tone: 'muted' },
-  ].filter((flag): flag is { text: string; tone: string } => Boolean(flag));
+    ...noteFlags(order),
+  ].filter((flag): flag is Flag => Boolean(flag));
   if (flags.length === 0) return null;
-  return <div className="card-flags">{flags.map(({ text, tone }) => <p key={text} className={`card-flag tone-${tone}`}>{text}</p>)}</div>;
+  return <div className="card-flags">{flags.map(({ text, tone }, index) => <p key={index} className={`card-flag tone-${tone}`} title={text}>{text}</p>)}</div>;
 }
 
 // 4번 칸 표시: "Zoro 고르는 중"(4번 칸이 빈 채로 Zoro 답을 기다림), "Zoro 0.78", "룰"(Zoro가 답하지 못함).
@@ -157,7 +175,47 @@ function Slot4Reason({ slot4, full = false }: { slot4: Slot4Info; full?: boolean
 
 const orderStatusLabels: Record<OrderView['status'], string> = { waiting: '대기 중', in_progress: '제조 중', done: '완료' };
 
-function OrderDetail({ order, slot4, now }: { order: OrderView; slot4?: Slot4Info; now: number }) {
+const noteKindLabels: Record<string, string> = { recipe: '만드는 법', packing: '포장', confirm: '확인 필요', delivery: '배달 기사 몫', other: '가게 일 아님' };
+const noteStatusLabels: Record<NonNullable<OrderView['note_read']>['status'], string> = {
+  checking: 'Zoro가 읽는 중이에요.', ready: 'Zoro가 문장마다 읽고, 확신이 높을수록 카드에 바로 반영했어요.',
+  unavailable: 'Zoro가 답하지 못해 원문만 보여 줘요. 직접 확인해 주세요.', off: 'AI 서버가 없어 원문만 보여 줘요.',
+};
+
+// 상세 창의 요청사항. 문장마다 어느 칸에 적혔는지, Zoro가 읽은 뜻과 확신, 카드에 한 일. ⚠는 [확인했어요]로 내리고, 메모로 붙인 옵션은 [되돌리기]로 뗀다.
+function NoteDetail({ order, busy, onNote }: { order: OrderView; busy: boolean; onNote: (decision: 'confirm' | 'revert', sentenceId: string) => void }) {
+  const note = order.note_read;
+  if (!note) return null;
+  const open = order.status !== 'done';
+  return (
+    <section className="note-detail-section">
+      <h3>요청사항</h3>
+      <p className="note-detail-status">{noteStatusLabels[note.status]}</p>
+      <ul className="note-sentences">
+        {note.sentences.map((sentence) => (
+          <li key={sentence.id} className={sentence.check && !sentence.resolved ? 'needs-check' : undefined}>
+            <p className="note-sentence-text"><span className="note-field">{sentence.field === 'rider' ? '배달 칸' : '가게 칸'}</span>"{sentence.text}"</p>
+            {sentence.kind && (
+              <p className="note-sentence-zoro">
+                Zoro: {noteKindLabels[sentence.kind]}{sentence.option_name ? ` · ${sentence.option_name}` : ''}{sentence.confidence !== undefined ? ` · 확신 ${sentence.confidence.toFixed(2)}` : ''}
+                {sentence.moved ? ' · 배달 칸에 적힌 가게 일' : ''}
+              </p>
+            )}
+            <p className="note-sentence-result">{sentence.hidden ? '카드에 띄우지 않음 (라이더 몫)' : sentence.label}{sentence.resolved ? ' · 확인함' : ''}</p>
+            {sentence.check && !sentence.resolved && <p className="note-sentence-check">⚠ {sentence.check}</p>}
+            {open && sentence.check && !sentence.resolved && (
+              <div className="note-sentence-actions">
+                <button type="button" className="card-button" disabled={busy} onClick={() => onNote('confirm', sentence.id)}>확인했어요</button>
+                {sentence.applied && <button type="button" className="card-button" disabled={busy} onClick={() => onNote('revert', sentence.id)}>되돌리기</button>}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function OrderDetail({ order, slot4, now, busy, onNote }: { order: OrderView; slot4?: Slot4Info; now: number; busy: boolean; onNote: (decision: 'confirm' | 'revert', sentenceId: string) => void }) {
   return (
     <>
       <p className="order-detail-meta">
@@ -174,6 +232,7 @@ function OrderDetail({ order, slot4, now }: { order: OrderView; slot4?: Slot4Inf
       <h3>주문 메뉴</h3>
       <OrderLines order={order} />
       <OrderFlags order={order} />
+      <NoteDetail order={order} busy={busy} onNote={onNote} />
       {slot4 && slot4.order_id === order.order_id && <Slot4Reason slot4={slot4} full />}
     </>
   );
@@ -324,6 +383,14 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
   async function completeTask(noteId: string) {
     setBusy(true);
     const result = await callApi('/api/notes', { body: { note_id: noteId } });
+    setBusy(false);
+    setError(result.ok ? null : result.error);
+  }
+
+  // 요청사항 ⚠ 처리(상세 창): 확인했어요 / 되돌리기
+  async function resolveNote(order: OrderView, sentenceId: string, decision: 'confirm' | 'revert') {
+    setBusy(true);
+    const result = await callApi(orderPath(order.order_id), { method: 'PATCH', body: { action: 'note', sentence_id: sentenceId, decision } });
     setBusy(false);
     setError(result.ok ? null : result.error);
   }
@@ -511,7 +578,7 @@ export default function Dashboard({ initial }: { initial: BoardSnapshot }) {
               <h2 id="order-detail-title">{detail.order_id} 주문 상세</h2>
               <button type="button" className="secondary-button" onClick={() => detailDialog.current?.close()}>닫기</button>
             </div>
-            <OrderDetail order={detail} slot4={slot4} now={now} />
+            <OrderDetail order={detail} slot4={slot4} now={now} busy={busy} onNote={(decision, sentenceId) => void resolveNote(detail, sentenceId, decision)} />
           </>
         )}
       </dialog>

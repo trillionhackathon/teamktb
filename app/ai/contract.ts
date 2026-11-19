@@ -174,3 +174,31 @@ export function parseGroupResult(value: unknown): AiGroupResult | undefined {
   if (!isRecord(matched) || !Object.values(matched).every((ids) => Array.isArray(ids) && ids.every((id) => typeof id === 'string'))) return undefined;
   return { groups: groups as Record<string, number>, scores: scores as Record<string, number>, matched_menus: matched as Record<string, string[]>, fallback };
 }
+
+// ---- 배달 요청사항 읽기(/ai/read-note): 주문이 들어올 때 한 번 ----
+// aiserver app/schemas.py NoteRequest/NoteResult와 맞춘다. 문장마다 Zoro가 뜻과 확신(확률)만 답한다.
+// 어느 칸(가게/배달) 문장인지는 보내지 않는다. 반영·⚠·잔 나누기는 teamktb domain/note.ts가 정한다.
+export type AiNoteRequest = {
+  order_id: string;
+  menu: string;
+  options: { id: string; name: string }[];
+  sentences: { id: string; text: string }[];
+};
+export type AiNoteAnswer = { id: string; kind: Record<string, number>; option: Record<string, number>; partial: number; body: number };
+export type AiNoteResult = { sentences: AiNoteAnswer[]; fallback: boolean };
+
+const isProbability = (value: unknown): value is number => isFiniteNumber(value) && value >= 0 && value <= 1;
+const isProbabilities = (value: unknown): value is Record<string, number> => isRecord(value) && Object.values(value).every(isProbability);
+
+export function parseNoteResult(value: unknown): AiNoteResult | undefined {
+  if (!isRecord(value)) return undefined;
+  const { sentences = [], fallback = false } = value;
+  if (!Array.isArray(sentences) || typeof fallback !== 'boolean') return undefined;
+  const answers: AiNoteAnswer[] = [];
+  for (const item of sentences) {
+    if (!isRecord(item) || typeof item.id !== 'string' || !isProbabilities(item.kind) || !isProbabilities(item.option)) return undefined;
+    if (!isProbability(item.partial) || !isProbability(item.body)) return undefined;
+    answers.push({ id: item.id, kind: item.kind, option: item.option, partial: item.partial, body: item.body });
+  }
+  return { sentences: answers, fallback };
+}
