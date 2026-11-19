@@ -16,7 +16,7 @@ npm run dev
 
 | 화면 | 역할 |
 | --- | --- |
-| [주방 운영 보드](http://localhost:3000) | 2×5 보드(1~5번 접수순 고정, 6~10번 재배치, 11번째부터 대기열), 제조 시작·완료, 매장 상황 입력, 시나리오 재생 |
+| [주방 운영 보드](http://localhost:3000) | 일머리 퀘스트 보드(목업). 왼쪽 매장 알림, 오른쪽 위 4+4 주문 보드(1~4번 지금 만들 주문과 완료 버튼, 5~8번 Zoro가 고른 다음 주문), 오른쪽 아래 일머리 TIP(1번 주문을 끝내기 위한 할 일). 상단 버튼으로 시연용 자동 주문을 켜고 끕니다 |
 | [키오스크](http://localhost:3000/kiosk) | 매장·포장 주문과 목업 결제. 결제가 끝나면 서버가 매긴 주문 번호와 예상 대기시간을 보여줍니다 |
 | [배달 목업](http://localhost:3000/delivery) | 배달앱 주문과 라이더 메시지(거의 다 왔어요, N분 뒤 도착, 도착) |
 
@@ -27,6 +27,7 @@ npm run dev
 주방 운영 보드 ──PATCH /api/orders/:번호, POST /api/events──▶ 주문 저장소 ──POST /ai/decide──▶ aiserver
 ```
 
+- 주방 운영 보드는 서버 보드 순서를 받아 화면에서 4+4칸으로 다시 나눕니다. 후보 승격과 일머리 TIP은 Zoro 판단을 흉내 낸 목업 규칙([app/client/quest-board.ts](./app/client/quest-board.ts))이고, 고정칸과 미리 만든 잔 수는 브라우저 localStorage에 저장합니다.
 - 메뉴·가격·옵션은 [data/recipe.json](./data/recipe.json), 제조 시간·보드 규칙·신뢰도 기준은 [data/cafe_db.json](./data/cafe_db.json), 시나리오는 [data/scenarios.json](./data/scenarios.json)과 [scenarios.md](./scenarios.md)를 읽습니다. 화면 쪽 하드코딩 메뉴는 없습니다.
 - 주문 형식은 `cafe_db.json`의 `signals_schema.order`를 따릅니다(`order_id: "#101"`, `menu_items: [{menu, qty, size, options}]`, `channel: dine-in | takeout | delivery`).
 - 제조 시간은 `remaining_work_formula`(첫 잔 + (수량-1)×추가 잔 + 옵션 `prep_delta_sec`)로 계산합니다. MVP 3종 외 음료는 같은 `complexity_tier` MVP 메뉴 값을 추정치로 씁니다(키오스크에 `(추정)` 표시).
@@ -72,6 +73,7 @@ npm run dev
 | DELETE | `/api/tips/:id` | 팁 해제 |
 | GET, POST | `/api/scenarios` | 시나리오 목록, `{ scenario_id }` 불러오기, `{ scenario_id, trigger }` 재생 |
 | GET | `/api/menu` | 메뉴 카탈로그와 주문 가능 여부 |
+| GET, POST | `/api/demo-feed` | 시연용 자동 주문 상태, `{ running: true \| false }`로 켜고 끄기. 5~12초마다 예시 주문을 넣고 보드에 16건이 쌓이면 잠시 멈춤. `DEMO_FEED=1`이면 서버 시작부터 켜짐 |
 
 ## 검증
 
