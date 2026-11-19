@@ -45,7 +45,7 @@ export function riderEtaMs(order: Order): number | undefined {
   return Date.parse(order.rider_eta_at);
 }
 
-function riderText(order: Order, now: number): string | undefined {
+export function riderText(order: Order, now: number): string | undefined {
   if (order.channel !== 'delivery') return undefined;
   const eta = riderEtaMs(order);
   if (eta === undefined) return order.rider_status ? riderLabels[order.rider_status] : undefined;

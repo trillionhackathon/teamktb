@@ -59,6 +59,17 @@ export type MenuGroup = { id: string; name_kr: string; color: string };
 // group: 이 단계 메뉴의 계열(Zoro가 레시피로 만든 data/menu_groups.json). 같은 계열 단계는 연달아 놓는다.
 export type WorkStep = { text: string; orders: string[]; kind: 'make' | 'prep' | 'pack' | 'done'; group?: MenuGroup };
 
+// Zoro가 주문이 바뀔 때마다 맨 앞 4건(고정칸)을 비교한 결과(/ai/group-orders).
+// groups: 비슷해서 연달아 만들기 좋은 주문끼리 한 묶음(같은 색 하이라이트). 둘 이상 묶인 주문만 있다.
+export type ReviewGroup = { id: number; label: string; color: string; size: number };
+export type BoardReview = { status: 'off' | 'checking' | 'ready' | 'unavailable'; groups: Record<string, ReviewGroup> };
+
+// 아래 자연어 칸의 카드.
+// head: 1번 주문의 메뉴와 "2~4번 중 뭘 같이 만들어요". 카드의 완료 버튼은 위 1번의 완료 버튼과 같은 동작이다.
+// next: 1번과 상관없이 2~4번끼리 비슷한 묶음 안내(버튼 없음). 1번이 끝나 새 1번이 되면 head 카드가 된다.
+// quick: 포장 디저트 1잔처럼 금방 끝나는 주문을 룰로 알린다(누르면 그 주문을 내보낸 것으로 완료).
+export type Note = { id: string; kind: 'head' | 'next' | 'quick'; text: string; detail?: string; order_ids: string[]; color?: string };
+
 export type Tip = { id: string; text: string; source: DecisionSource; confidence?: number };
 
 export type EventCategory =

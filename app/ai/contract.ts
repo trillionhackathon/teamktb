@@ -157,3 +157,16 @@ export function parsePickResult(value: unknown): AiPickResult | undefined {
   return { pick, source, confidence, scores: scores as Record<string, number>, fallback };
 }
 
+
+// ---- 위 4칸 묶기(/ai/group-orders): 주문이 바뀔 때마다 맨 앞 4건 중 비슷한 주문끼리 한 묶음 ----
+// aiserver app/schemas.py GroupRequest/GroupResult와 맞춘다.
+export type AiGroupMenu = { id: string; name: string; equipment: string[]; steps: string[] };
+export type AiGroupRequest = { orders: { id: string; menus: AiGroupMenu[] }[] };
+export type AiGroupResult = { groups: Record<string, number>; fallback: boolean };
+
+export function parseGroupResult(value: unknown): AiGroupResult | undefined {
+  if (!isRecord(value)) return undefined;
+  const { groups = {}, fallback = false } = value;
+  if (!isRecord(groups) || !Object.values(groups).every((n) => Number.isInteger(n)) || typeof fallback !== 'boolean') return undefined;
+  return { groups: groups as Record<string, number>, fallback };
+}

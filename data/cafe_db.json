@@ -49,6 +49,7 @@
     "locked_row": "top (slots 1-4) — 고정. 1번 완료까지 할 일을 작업창에 쓴다",
     "reorderable_row": "bottom (slots 5-8) — 들어온 순서로 대기. 1번 완료 때 이 중 하나를 골라 4번에 넣는다(Zoro priority_order, Zoro가 답하지 못하면 룰)",
     "locked_count": 4,
+    "fifo": true,
     "overflow": "9번째 주문부터 화면 밖 대기열",
     "card_fields": [
       "order_id",

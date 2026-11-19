@@ -38,6 +38,7 @@ function toDrink(drink: RecipeDrink): MenuDrink {
     options: drink.available_options,
     complexity_tier: drink.complexity_tier,
     equipment: drink.equipment_required,
+    steps: drink.steps,
     first_cup_sec: reference.first_cup_sec,
     additional_cup_sec: reference.additional_cup_sec,
     timing_basis: measured && measured.basis !== 'estimate' ? 'measured' : 'tier_estimate',
@@ -75,6 +76,7 @@ export const boardConfig = {
   confidenceThreshold: cafeDb.model.confidence_threshold,
   quickMenuSec: (cafeDb.kds_board as { quick_menu_sec?: number }).quick_menu_sec,
   quickSlots: (cafeDb.kds_board as { quick_slots?: number }).quick_slots,
+  fifo: (cafeDb.kds_board as { fifo?: boolean }).fifo,
 };
 
 // 사장님 기준(data/owner_rules.json). sentences는 Zoro에, limits는 사실 계산과 룰에 쓴다.

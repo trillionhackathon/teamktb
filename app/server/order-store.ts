@@ -7,8 +7,11 @@ import {
   findDrink,
   lineName, lineUsesEquipment, maxOrderCups, normalizeLine, optionNames, orderPrice, orderWorkSeconds, stockNeeded, type MenuCatalog,
 } from '../domain/menu.ts';
+import { buildGroupRequest, groupViews, headNote, nextText, quickText } from '../domain/review.ts';
 import { defaultScenarioId, findScenario, scenarios, type SignalPatch } from '../domain/scenarios.ts';
 import type {
+  BoardReview,
+  Note,
   Channel, Decision, EventCategory, MenuItemInput, Order, OrderLine, OrderSource, OwnerRules, Signals, Slot4Info, StoreEvent, Tip, WorkStep,
 } from '../domain/types.ts';
 import { channelLabels, riderLabels, sourceLabels, type BoardSnapshot, type OrderView } from '../domain/views.ts';
@@ -48,6 +51,8 @@ type State = {
   scenarioId: string;
   slot4?: Slot4Info;
   workWindow: WorkStep[];
+  // 마지막 Zoro 묶기. ok가 false면 aiserver가 답하지 못한 것이다.
+  review?: { ok: boolean; groups: Record<string, number> };
 };
 
 type Deps = { catalog: MenuCatalog; config: BoardConfig; ai?: AiClient; now?: () => number; decideDelayMs?: number; ownerRules?: OwnerRules };
@@ -72,6 +77,11 @@ export class OrderStore {
   private pickPending: Promise<void> = Promise.resolve();
   // 4번 고르기 순번. 기다리는 사이 또 완료되면 늦게 온 Zoro 답을 버린다.
   private pickSeq = 0;
+  // Zoro 보드 검토. 주문 구성이 바뀔 때만 다시 부른다(reviewKey). 늦게 온 답은 순번으로 버린다.
+  private reviewTimer: ReturnType<typeof setTimeout> | undefined;
+  private reviewPending: Promise<void> = Promise.resolve();
+  private reviewSeq = 0;
+  private lastReviewKey = '';
   // 확인 중인 4번 고르기의 후보. Zoro 답보다 다음 완료가 먼저 오면 룰 선택으로 확정하며 밀린 횟수를 센다.
   private pickCandidates: string[] = [];
   private readonly now: () => number;
@@ -92,8 +102,8 @@ export class OrderStore {
 
   // 테스트와 시나리오 재생에서 AI 판단(팁, 4번 고르기)이 끝날 때까지 기다린다.
   async settle(): Promise<void> {
-    while (this.decideTimer !== undefined) await new Promise((resolve) => setTimeout(resolve, 5));
-    await Promise.all([this.pending, this.pickPending]);
+    while (this.decideTimer !== undefined || this.reviewTimer !== undefined) await new Promise((resolve) => setTimeout(resolve, 5));
+    await Promise.all([this.pending, this.pickPending, this.reviewPending]);
   }
 
   loadScenario(id: string): StoreError | undefined {
@@ -121,6 +131,10 @@ export class OrderStore {
     this.decideTimer = undefined;
     this.pickSeq += 1;
     this.pickCandidates = [];
+    if (this.reviewTimer) clearTimeout(this.reviewTimer);
+    this.reviewTimer = undefined;
+    this.reviewSeq += 1;
+    this.lastReviewKey = '';
     this.state = {
       version: (this.state?.version ?? 0) + 1,
       orders,
@@ -229,6 +243,7 @@ export class OrderStore {
     } else {
       // Zoro가 4번을 고르는 사이 고정 주문이 또 끝나면, 비어 있던 4번은 룰 선택으로 먼저 채우고 당긴다.
       if (this.isPicking() && this.state.board.indexOf(orderId) >= 0 && this.state.board.indexOf(orderId) < this.lockedShown()) this.settlePendingPick();
+      if (this.deps.config.fifo && this.state.board[0] === orderId) this.markCompanionsMade(orderId);
       order.status = 'done';
       order.completed_at = now;
       const locked = this.lockedShown();
@@ -357,6 +372,8 @@ export class OrderStore {
       // Zoro가 고르는 중이거나, 4번 칸에 있는 주문의 고르기 정보만 보낸다(다음 완료로 3번이 되면 빠진다).
       slot4: slot4 && (slot4.status === 'checking' || this.state.board[config.lockedCount - 1] === slot4.order_id) ? structuredClone(slot4) : undefined,
       work_window: structuredClone(this.state.workWindow),
+      review: this.reviewView(board),
+      notes: this.noteViews(board),
     };
   }
 
@@ -445,6 +462,12 @@ export class OrderStore {
     });
     if (!candidates.length) return;
     const facts = buildFacts(locked, candidates, this.factContext());
+    const fifoPick = candidates[0];
+    if (this.deps.config.fifo) {
+      // FIFO: 4번은 가장 먼저 들어온 대기 주문이다. Zoro에 묻지 않는다(비슷한 주문 묶기는 화면에서 따로 한다).
+      this.placeAt4(fifoPick, { source: 'rule', status: 'final', rule_pick: fifoPick, facts: Object.fromEntries([...facts].map(([id, fact]) => [id, fact.line])) });
+      return;
+    }
     const rule = rulePickNext(candidates, this.state.orders, facts, this.rules.limits);
     const factLines = Object.fromEntries([...facts].map(([id, fact]) => [id, fact.line]));
     // 후보가 하나면 고를 것이 없어 Zoro에 묻지 않는다. aiserver가 없으면 룰로 채운다.
@@ -495,7 +518,7 @@ export class OrderStore {
 
   private orderWaiting(ids: string[]): string[] {
     const byArrival = [...ids].sort((a, b) => this.arrival(a) - this.arrival(b));
-    const quick = byArrival.filter((id) => this.isQuick(id)).slice(0, this.deps.config.quickSlots ?? 0);
+    const quick = this.deps.config.fifo ? [] : byArrival.filter((id) => this.isQuick(id)).slice(0, this.deps.config.quickSlots ?? 0);
     return [...quick, ...byArrival.filter((id) => !quick.includes(id))];
   }
 
@@ -568,6 +591,7 @@ export class OrderStore {
   // 작업창 마지막 줄(1번 완료)을 누르면 위 단계는 다 한 것으로 본다. make 단계의 주문은 made, prep 단계는 prepped가 된다.
   // 1번이 아닌 주문이 먼저 완료되면(라이더가 먼저 와서 가져감) 작업창 단계는 한 것으로 보지 않는다.
   private markWindowDone(orderId: string): void {
+    if (this.deps.config.fifo) return;   // FIFO에서는 '만듦' 표시를 아래 카드의 버튼으로만 한다
     const steps = this.state.workWindow;
     const last = steps.at(-1);
     if (last?.kind !== 'done' || last.orders[0] !== orderId) return;
@@ -635,6 +659,7 @@ export class OrderStore {
     this.state.version += 1;
     this.rebuildWorkWindow();
     this.notify();
+    this.scheduleReview();
     if (!this.deps.ai || options.decide === false) return;
     if (this.decideTimer) clearTimeout(this.decideTimer);
     this.decideTimer = setTimeout(() => {
@@ -666,6 +691,104 @@ export class OrderStore {
       decided_at: new Date(this.now()).toISOString(),
     };
     this.commit({ decide: false });
+  }
+
+  // ---- 위 4칸 묶기와 아래 자연어 칸 ----
+
+  private topIds(): string[] {
+    return this.state.board.slice(0, this.deps.config.lockedCount).filter((id) => this.state.orders.get(id)?.status !== 'done');
+  }
+
+  // 맨 앞 4건의 구성이 바뀔 때만 다시 묻는다. 주문이 끝나 FIFO로 4건이 새로 정해지면 다시 비교한다.
+  private scheduleReview(): void {
+    if (!this.deps.ai) return;
+    const key = this.topIds().join(',');
+    if (key === this.lastReviewKey) return;
+    this.lastReviewKey = key;
+    if (this.reviewTimer) clearTimeout(this.reviewTimer);
+    this.reviewTimer = setTimeout(() => {
+      this.reviewTimer = undefined;
+      this.reviewPending = this.runReview();
+    }, this.deps.decideDelayMs ?? 250);
+  }
+
+  private async runReview(): Promise<void> {
+    const ai = this.deps.ai;
+    if (!ai) return;
+    const seq = ++this.reviewSeq;
+    const request = buildGroupRequest(this.topIds(), this.state.orders, this.deps.catalog);
+    if (request.orders.length < 2) {
+      this.state.review = { ok: true, groups: {} };
+      this.commit({ decide: false });
+      return;
+    }
+    const result = await ai.groupOrders(request);
+    if (seq !== this.reviewSeq) return;   // 기다리는 사이 앞 4건이 또 바뀌었다
+    if (!result.ok) console.warn(`[order-store] group-orders failed: ${result.error}`);
+    const ok = result.ok && !result.data.fallback;
+    this.state.review = { ok, groups: ok ? result.data.groups : {} };
+    this.commit({ decide: false });
+  }
+
+  // 1번이 끝나면 1번과 같은 묶음인 2~4번은 같이 만든 것으로 본다('만듦'. 화면에서는 삭선, 남은 일은 포장뿐).
+  // 위 1번의 완료 버튼과 아래 카드의 완료 버튼이 모두 이 길을 지난다.
+  private markCompanionsMade(headId: string): void {
+    for (const id of this.companionsOf(headId)) this.state.orders.get(id)!.made = true;
+  }
+
+  // 1번과 같은 묶음인 위 4칸 주문(아직 안 끝난 것만)
+  private companionsOf(headId: string): string[] {
+    const groups = this.state.review?.ok ? this.state.review.groups : {};
+    const n = groups[headId];
+    if (n === undefined) return [];
+    return this.topIds().filter((id) => id !== headId && groups[id] === n && this.state.orders.get(id)?.status !== 'done');
+  }
+
+  // 화면용 묶음(색). 맨 앞 주문 중 둘 이상 남은 묶음만 보낸다.
+  private reviewView(board: OrderView[]): BoardReview {
+    const stored = this.state.review;
+    if (!this.deps.ai) return { status: 'off', groups: {} };
+    if (!stored) return { status: 'checking', groups: {} };
+    const top = new Set(board.filter(({ zone }) => zone === 'locked').map(({ order_id: id }) => id));
+    return { status: stored.ok ? 'ready' : 'unavailable', groups: groupViews(stored.groups, top) };
+  }
+
+  // 아래 자연어 칸 카드. 1번 기준으로 1번 메뉴와 같이 만들 2~4번을 적고(head), 1번과 상관없는 묶음은 안내만(next),
+  // 포장 디저트 1잔은 룰로 알린다(quick).
+  private noteViews(board: OrderView[]): Note[] {
+    const colors = this.reviewView(board).groups;
+    const { catalog } = this.deps;
+    const top = this.topIds();
+    const notes: Note[] = [];
+    const headId = top[0];
+    const head = headId ? this.state.orders.get(headId) : undefined;
+    if (head) {
+      const companions = this.companionsOf(headId);
+      notes.push({ id: `head:${headId}`, kind: 'head', ...headNote(head, companions, this.state.orders, catalog), order_ids: [headId, ...companions], color: colors[headId]?.color });
+    }
+    const groups = this.state.review?.ok ? this.state.review.groups : {};
+    const byGroup = new Map<number, string[]>();
+    for (const id of top.slice(1)) {
+      const n = groups[id];
+      if (n !== undefined && n !== groups[headId]) byGroup.set(n, [...(byGroup.get(n) ?? []), id]);
+    }
+    for (const ids of byGroup.values()) {
+      if (ids.length >= 2) notes.push({ id: `next:${ids.join(',')}`, kind: 'next', text: nextText(ids, this.state.orders, catalog), order_ids: ids, color: colors[ids[0]]?.color });
+    }
+    this.state.board.forEach((id, index) => {
+      const text = quickText(this.state.orders.get(id)!, index + 1, catalog);
+      if (text) notes.push({ id: `quick:${id}`, kind: 'quick', text, order_ids: [id] });
+    });
+    return notes;
+  }
+
+  // 빠른 주문 카드의 "내보냈어요": 그 주문을 완료한다. (1번 카드의 완료는 위 완료 버튼과 같은 주문 완료 API를 쓴다.)
+  handleNote(noteId: string): { ok: true } | StoreError {
+    if (!noteId.startsWith('quick:')) return { error: '이 카드는 버튼으로 처리하지 않아요.', status: 400 };
+    const id = noteId.slice('quick:'.length);
+    if (!this.noteViews(this.snapshot().board).some((note) => note.id === noteId)) return { error: '이미 처리된 알림이에요.', status: 404 };
+    const result = this.updateOrderStatus(id, 'complete');
+    return 'error' in result ? result : { ok: true };
   }
 
   private async classify(event: StoreEvent): Promise<void> {
